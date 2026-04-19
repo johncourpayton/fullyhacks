@@ -9,10 +9,6 @@ export default defineConfig({
       "/api/geojson-files": {
         target: "http://localhost:4000",
         changeOrigin: true
-      },
-      "/api/ships": {
-        target: "http://localhost:5000",
-        changeOrigin: true
       }
     }
   }

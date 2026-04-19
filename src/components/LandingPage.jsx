@@ -41,10 +41,10 @@ export default function LandingPage({ onLaunch }) {
             {/* Project Summary */}
             <div className="flex-[2] border-r border-white/20 px-8 py-10 md:px-16 md:pl-[120px]">
               <p className="max-w-xl text-sm leading-relaxed text-zinc-300">
-                OceanGuard is a high-fidelity data ecosystem dedicated to monitoring whale migration paths 
-                and mitigating maritime risks. By synthesizing global shipping lanes and contamination zones, 
-                we empower conservationists with real-time, agentic intelligence to protect our oceans' 
-                most majestic inhabitants.
+                OceanGuard maps whale migration paths against major ocean trash accumulation zones, helping
+                conservation teams quickly understand where migrating whales may face plastic pollution
+                exposure. Import a migration CSV, visualize routes on a 3D globe, and generate a focused
+                trash-risk summary for the selected path.
               </p>
             </div>
 
@@ -52,7 +52,7 @@ export default function LandingPage({ onLaunch }) {
             <div className="flex flex-1 items-center justify-between px-8 py-10 md:px-12">
               <div className="text-xs leading-tight text-zinc-400">
                 <span className="block font-bold text-white uppercase tracking-wider mb-1">Global Initiative</span>
-                Mapping 5 major gyres and <br/> live traffic corridors.
+                Mapping whale routes and <br/> the 5 major garbage patches.
               </div>
               
               <button 

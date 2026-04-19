@@ -10,7 +10,6 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:web\"",
     "dev:web": "vite",
     "dev:server": "node --watch server/index.js",
-    "dev:ships": "python3 server/marinetraffic_api.py",
     "build": "vite build",
     "preview": "vite preview"
   },

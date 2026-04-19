@@ -3,6 +3,7 @@ import GeoJSONLayer from "@arcgis/core/layers/GeoJSONLayer.js";
 import Map from "@arcgis/core/Map.js";
 import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
+import * as webMercatorUtils from "@arcgis/core/geometry/support/webMercatorUtils.js";
 import { analyzeImpact, generateMockAIReport, analyzeSpecificPodImpact, generateAgenticReport } from "../utils/ImpactAnalysis.js";
 import Papa from "papaparse";
 
@@ -23,7 +24,7 @@ function getWhaleSymbol(color = [0, 240, 255]) {
   return {
     type: "simple-line",
     color: [...color, 0.9],
-    width: 4,
+    width: 3,
     cap: "round",
     join: "round"
   };
@@ -62,12 +63,9 @@ function getGeoJsonRenderer(geometryType, title) {
     };
   }
 
-  // Professional teal for whales, gold for ships
   return {
     type: "simple",
-    symbol: title?.toLowerCase().includes("shipping") 
-      ? { type: "simple-line", color: [255, 165, 0, 0.8], width: 2, cap: "round" }
-      : getWhaleSymbol([0, 240, 255])
+    symbol: getWhaleSymbol([0, 240, 255])
   };
 }
 
@@ -108,7 +106,6 @@ export default function OceanGuardDashboard() {
   const [impactReport, setImpactReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [whaleData, setWhaleData] = useState(null);
-  const [shippingData, setShippingData] = useState(null);
   const [garbageData, setGarbageData] = useState(null);
 
   const [hoveredWhale, setHoveredWhale] = useState(null);
@@ -137,7 +134,7 @@ export default function OceanGuardDashboard() {
     view.on("click", async (event) => {
       const response = await view.hitTest(event);
       const results = response.results.filter(r => r.graphic?.layer?.title?.includes("Whale") || r.graphic?.layer?.title?.includes("Uploaded"));
-      if (results.length > 0) handleAnalyzeSpecificPath(results[0].graphic.geometry.toJSON());
+      if (results.length > 0) handleAnalyzeSpecificPath(results[0].graphic.geometry);
     });
 
     view.on("pointer-move", async (event) => {
@@ -180,8 +177,6 @@ export default function OceanGuardDashboard() {
 
     const whaleFile = files.find(f => f.url.includes("whales"));
     if (whaleFile) fetch(whaleFile.url).then(r => r.json()).then(setWhaleData);
-    const shipFile = files.find(f => f.url.includes("shipping_lanes"));
-    if (shipFile) fetch(shipFile.url).then(r => r.json()).then(setShippingData);
     const garbageFile = files.find(f => f.url.includes("garbage_patches"));
     if (garbageFile) fetch(garbageFile.url).then(r => r.json()).then(setGarbageData);
   };
@@ -192,8 +187,11 @@ export default function OceanGuardDashboard() {
     
     setTimeout(() => {
       try {
-        const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geometry.paths[0] }, properties: { name: "Target Pod" } };
-        const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData, shippingData);
+        const geographicGeometry = geometry.spatialReference?.isWGS84
+          ? geometry
+          : webMercatorUtils.webMercatorToGeographic(geometry);
+        const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geographicGeometry.toJSON().paths[0] }, properties: { name: "Target Pod" } };
+        const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData);
         setImpactReport(generateAgenticReport(analysis));
       } catch (err) {
         console.error("Analysis Error:", err);
@@ -243,31 +241,120 @@ export default function OceanGuardDashboard() {
             if (!file) return;
             Papa.parse(file, { header: true, dynamicTyping: true, complete: (res) => {
               try {
-                const latH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lat") || k === "y");
-                const lonH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lon") || k === "x");
-                const coords = res.data.map(r => [parseFloat(r[lonH]), parseFloat(r[latH])]).filter(c => !isNaN(c[0]));
+                const headers = Object.keys(res.data[0]);
+                const latH = headers.find(k => k === "location-lat") || headers.find(k => k.toLowerCase().includes("lat"));
+                const lonH = headers.find(k => k === "location-long") || headers.find(k => k.toLowerCase().includes("lon"));
+                const timeH = headers.find(k => k === "timestamp") || headers.find(k => k.toLowerCase().includes("time"));
+                const individualH = headers.find(k => k === "individual-local-identifier") || headers.find(k => k.toLowerCase().includes("individual")) || headers.find(k => k.toLowerCase().includes("id"));
                 
                 const formatWhaleName = (name) => {
                   return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
                 };
 
+                function haversineDistance(p1, p2) {
+                  const R = 6371;
+                  const toRad = d => d * Math.PI / 180;
+
+                  const dLat = toRad(p2[1] - p1[1]);
+                  const dLon = toRad(p2[0] - p1[0]);
+
+                  const lat1 = toRad(p1[1]);
+                  const lat2 = toRad(p2[1]);
+
+                  const a =
+                    Math.sin(dLat / 2) ** 2 +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(dLon / 2) ** 2;
+
+                  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                }
+
                 const species = formatWhaleName(file.name);
-                const geojson = { 
-                  type: "FeatureCollection", 
-                  features: [{ 
-                    type: "Feature", 
-                    geometry: { type: "LineString", coordinates: coords }, 
-                    properties: { name: species, file_source: file.name } 
-                  }] 
+                const groupedRows = res.data.reduce((groups, row) => {
+                  const key = individualH ? row[individualH] || "Unknown Individual" : "Migration Path";
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(row);
+                  return groups;
+                }, {});
+
+                const createFeaturesFromGroups = (groups) => Object.entries(groups).flatMap(([individual, rows]) => {
+                  const sortedRows = timeH
+                    ? [...rows].sort((a, b) => new Date(a[timeH]) - new Date(b[timeH]))
+                    : rows;
+                  const features = [];
+                  let coords = [];
+                  let lastPoint = null;
+                  let segmentIndex = 1;
+
+                  sortedRows.forEach((row) => {
+                    const longitude = parseFloat(row[lonH]);
+                    const latitude = parseFloat(row[latH]);
+
+                    if (Number.isNaN(longitude) || Number.isNaN(latitude)) {
+                      return;
+                    }
+
+                    const currentPoint = [longitude, latitude];
+
+                    if (lastPoint) {
+                      const distanceKm = haversineDistance(lastPoint, currentPoint);
+                      if (distanceKm > 300) {
+                        if (coords.length > 1) {
+                          features.push({
+                            type: "Feature",
+                            geometry: { type: "LineString", coordinates: coords },
+                            properties: {
+                              name: species,
+                              file_source: file.name,
+                              whale_id: individual,
+                              individual,
+                              segment_index: segmentIndex
+                            }
+                          });
+                          segmentIndex += 1;
+                        }
+                        coords = [];
+                      }
+                    }
+
+                    coords.push(currentPoint);
+                    lastPoint = currentPoint;
+                  });
+
+                  if (coords.length > 1) {
+                    features.push({
+                      type: "Feature",
+                      geometry: { type: "LineString", coordinates: coords },
+                      properties: {
+                        name: species,
+                        file_source: file.name,
+                        whale_id: individual,
+                        individual,
+                        segment_index: segmentIndex
+                      }
+                    });
+                  }
+
+                  return features;
+                });
+                const features = createFeaturesFromGroups(groupedRows);
+
+                const geojson = {
+                  type: "FeatureCollection",
+                  features
                 };
                 setWhaleData(geojson);
                 const layer = new GeoJSONLayer({ 
                   url: URL.createObjectURL(new Blob([JSON.stringify(geojson)], { type: "application/geo+json" })), 
                   title: `Uploaded: ${file.name}`, 
-                  renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) } 
+                  renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) }
                 });
                 viewRef.current.map.add(layer);
-                viewRef.current.goTo(layer.fullExtent);
+                layer.when(() => {
+                  if (layer.fullExtent) {
+                    viewRef.current.goTo(layer.fullExtent);
+                  }
+                });
               } catch (err) {
                 console.error("CSV Import Error:", err);
                 alert("Failed to parse CSV. Please ensure it has Latitude/Longitude headers.");
