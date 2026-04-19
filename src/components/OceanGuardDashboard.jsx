@@ -173,7 +173,8 @@ export default function OceanGuardDashboard() {
 
   const loadDynamicLayers = async (map) => {
     const files = await getDataGeoJsonFiles();
-    const layers = await Promise.all(files.map(createDataGeoJsonLayer));
+    const visibleFiles = files.filter(f => !f.url.includes("shipping_lanes"));
+    const layers = await Promise.all(visibleFiles.map(createDataGeoJsonLayer));
     layers.forEach(l => l.visible = true);
     dataGeoJsonLayersRef.current = layers;
     map.addMany(layers);

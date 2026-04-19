@@ -1,5 +1,23 @@
 import * as turf from "@turf/turf";
 
+function clampRiskScore(score) {
+  const numericScore = Number(score) || 0;
+  return Math.min(10, Math.max(0, numericScore));
+}
+
+function getRiskWeight(riskLevel) {
+  switch ((riskLevel || "").toLowerCase()) {
+    case "critical":
+      return 3.5;
+    case "high":
+      return 2.5;
+    case "medium":
+      return 1.5;
+    default:
+      return 1;
+  }
+}
+
 /**
  * Analyzes the impact of contamination and shipping traffic on a specific migration path.
  * @param {Object} whaleFeature - A single GeoJSON Feature (LineString)
@@ -40,11 +58,13 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
     });
   }
 
+  const rawRiskScore = garbageIntersections.reduce((score, item) => score + getRiskWeight(item.risk), 0) + (shippingRisks.length * 1.5);
+
   return {
     whaleName,
     garbageIntersections,
     shippingRisks,
-    overallRiskScore: (garbageIntersections.length * 2.5) + (shippingRisks.length * 1.5)
+    overallRiskScore: clampRiskScore(rawRiskScore)
   };
 }
 
@@ -53,13 +73,14 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
  */
 export function generateAgenticReport(analysis) {
   const { overallRiskScore, garbageIntersections, shippingRisks } = analysis;
+  const riskScore = clampRiskScore(overallRiskScore);
   
   let status = "OPTIMAL";
   let statusColor = "text-teal-400";
-  if (overallRiskScore > 7) {
+  if (riskScore > 7) {
     status = "CRITICAL";
     statusColor = "text-red-500";
-  } else if (overallRiskScore > 3) {
+  } else if (riskScore > 3) {
     status = "WARNING";
     statusColor = "text-orange-400";
   }
@@ -68,7 +89,7 @@ export function generateAgenticReport(analysis) {
     title: "Ecosystem Impact Assessment",
     status,
     statusColor,
-    riskScore: overallRiskScore,
+    riskScore,
     sections: [
       {
         id: "env",
@@ -89,7 +110,7 @@ export function generateAgenticReport(analysis) {
         label: "Agent Recommendation",
         value: "Protocol Assigned",
         details: [
-          overallRiskScore > 5 
+          riskScore > 5
             ? "Immediate rerouting of maritime traffic or deployment of cleanup vessel recommended." 
             : "Continued observation. Deploy acoustic sensors to monitor stress levels."
         ],
@@ -110,14 +131,40 @@ export function generateMockAIReport(analysis) {
 
 // Keep the old functions for compatibility
 export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
-    // Basic wrapper for the old dashboard button
-    if (!whaleGeoJson?.features?.[0]) return null;
-    return {
-        summary: [{
-            whaleName: "Global Fleet",
-            intersections: [],
-            status: "Monitoring"
-        }],
-        totalIntersections: 0
-    };
+  const whaleFeatures = whaleGeoJson?.features || [];
+  const contaminationFeatures = contaminationGeoJson?.features || [];
+  const garbageIntersections = [];
+  const intersectingPaths = new Set();
+
+  whaleFeatures.forEach((whaleFeature, whaleIndex) => {
+    if (!whaleFeature?.geometry) return;
+
+    contaminationFeatures.forEach((zone) => {
+      if (!zone?.geometry) return;
+
+      const intersect = turf.lineIntersect(whaleFeature, zone);
+      if (intersect.features.length > 0) {
+        const patch = zone.properties?.name || "Contamination Zone";
+        const risk = zone.properties?.risk_level || "High";
+
+        intersectingPaths.add(whaleIndex);
+        garbageIntersections.push({
+          patch,
+          risk,
+          points: intersect.features.length
+        });
+      }
+    });
+  });
+
+  const exposureScore = whaleFeatures.length > 0
+    ? (intersectingPaths.size / whaleFeatures.length) * 7
+    : 0;
+  const severityScore = garbageIntersections.reduce((score, item) => score + getRiskWeight(item.risk), 0);
+
+  return {
+    riskScore: clampRiskScore(exposureScore + severityScore),
+    garbageIntersections,
+    totalIntersections: garbageIntersections.length
+  };
 }
