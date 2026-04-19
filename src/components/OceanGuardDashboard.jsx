@@ -349,7 +349,7 @@ export default function OceanGuardDashboard() {
                 const layer = new GeoJSONLayer({ 
                   url: URL.createObjectURL(new Blob([JSON.stringify(geojson)], { type: "application/geo+json" })), 
                   title: `Uploaded: ${file.name}`, 
-                  renderer: { type: "simple", symbol: getWhaleSymbol([37, 99, 235]) }
+                  renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) }
                 });
                 viewRef.current.map.add(layer);
                 layer.when(() => {
