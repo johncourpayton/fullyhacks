@@ -259,6 +259,24 @@ export default function OceanGuardDashboard() {
                   return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
                 };
 
+                function haversineDistance(p1, p2) {
+                  const R = 6371;
+                  const toRad = d => d * Math.PI / 180;
+
+                  const dLat = toRad(p2[1] - p1[1]);
+                  const dLon = toRad(p2[0] - p1[0]);
+
+                  const lat1 = toRad(p1[1]);
+                  const lat2 = toRad(p2[1]);
+
+                  const a =
+                    Math.sin(dLat / 2) ** 2 +
+                    Math.cos(lat1) * Math.cos(lat2) *
+                    Math.sin(dLon / 2) ** 2;
+
+                  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                }
+
                 const species = formatWhaleName(file.name);
                 const groupedRows = res.data.reduce((groups, row) => {
                   const key = individualH ? row[individualH] || "Unknown Individual" : "Migration Path";
@@ -273,10 +291,12 @@ export default function OceanGuardDashboard() {
                     : rows;
                   const segments = [];
                   let currentSegment = [];
+                  let lastTime = null;
 
                   sortedRows.forEach((row) => {
                     const longitude = parseFloat(row[lonH]);
                     const latitude = parseFloat(row[latH]);
+                    const currentTime = timeH ? new Date(row[timeH]) : null;
 
                     if (Number.isNaN(longitude) || Number.isNaN(latitude)) {
                       return;
@@ -286,11 +306,15 @@ export default function OceanGuardDashboard() {
                     const previousPoint = currentSegment[currentSegment.length - 1];
 
                     if (previousPoint) {
-                      const dx = point[0] - previousPoint[0];
-                      const dy = point[1] - previousPoint[1];
-                      const distanceKm = Math.sqrt(dx ** 2 + dy ** 2) * 111;
+                      const distanceKm = haversineDistance(previousPoint, point);
+                      const timeDiff = lastTime && currentTime
+                        ? currentTime - lastTime
+                        : 0;
 
-                      if (distanceKm > 300) {
+                      if (
+                        (distanceKm > 800 && timeDiff > 1000 * 60 * 60 * 48) ||
+                        distanceKm > 2000
+                      ) {
                         if (currentSegment.length > 1) {
                           segments.push(currentSegment);
                         }
@@ -299,6 +323,7 @@ export default function OceanGuardDashboard() {
                     }
 
                     currentSegment.push(point);
+                    lastTime = currentTime;
                   });
 
                   if (currentSegment.length > 1) {
