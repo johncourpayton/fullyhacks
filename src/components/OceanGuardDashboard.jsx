@@ -3,164 +3,14 @@ import GeoJSONLayer from "@arcgis/core/layers/GeoJSONLayer.js";
 import Map from "@arcgis/core/Map.js";
 import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
-
-const NASA_GIBS_CHLOROPHYLL_LAYER = "VIIRS_NOAA20_Chlorophyll_a_v2022.0_NRT";
-import { analyzeImpact, generateMockAIReport } from "../utils/ImpactAnalysis.js";
+import { analyzeImpact, generateMockAIReport, analyzeSpecificPodImpact, generateAgenticReport } from "../utils/ImpactAnalysis.js";
 import Papa from "papaparse";
 
-const GARBAGE_PATCHES_GEOJSON = {
-  type: "FeatureCollection",
-  features: [
-    {
-      type: "Feature",
-      properties: {
-        name: "North Pacific Garbage Patch",
-        ocean: "North Pacific",
-        description: "Approximate subtropical gyre accumulation region between Hawaii and California."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [-171, 25],
-            [-162, 33],
-            [-148, 38],
-            [-132, 37],
-            [-121, 30],
-            [-126, 22],
-            [-141, 18],
-            [-158, 19],
-            [-171, 25]
-          ]
-        ]
-      }
-    },
-    {
-      type: "Feature",
-      properties: {
-        name: "South Pacific Garbage Patch",
-        ocean: "South Pacific",
-        description: "Approximate subtropical gyre accumulation region west of South America."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [-156, -20],
-            [-140, -12],
-            [-119, -16],
-            [-99, -26],
-            [-89, -38],
-            [-105, -47],
-            [-132, -46],
-            [-153, -36],
-            [-164, -27],
-            [-156, -20]
-          ]
-        ]
-      }
-    },
-    {
-      type: "Feature",
-      properties: {
-        name: "North Atlantic Garbage Patch",
-        ocean: "North Atlantic",
-        description: "Approximate subtropical gyre accumulation region between North America and Europe."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [-72, 25],
-            [-62, 35],
-            [-45, 40],
-            [-27, 37],
-            [-18, 29],
-            [-27, 21],
-            [-45, 18],
-            [-63, 19],
-            [-72, 25]
-          ]
-        ]
-      }
-    },
-    {
-      type: "Feature",
-      properties: {
-        name: "South Atlantic Garbage Patch",
-        ocean: "South Atlantic",
-        description: "Approximate subtropical gyre accumulation region between South America and southern Africa."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [-42, -22],
-            [-28, -14],
-            [-7, -16],
-            [12, -25],
-            [18, -36],
-            [3, -44],
-            [-20, -43],
-            [-39, -34],
-            [-48, -27],
-            [-42, -22]
-          ]
-        ]
-      }
-    },
-    {
-      type: "Feature",
-      properties: {
-        name: "Indian Ocean Garbage Patch",
-        ocean: "Indian Ocean",
-        description: "Approximate subtropical gyre accumulation region in the southern Indian Ocean."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [45, -20],
-            [60, -12],
-            [82, -14],
-            [105, -23],
-            [112, -35],
-            [97, -44],
-            [72, -43],
-            [50, -34],
-            [39, -26],
-            [45, -20]
-          ]
-        ]
-      }
-    },
-    {
-      type: "Feature",
-      properties: {
-        name: "Southern Ocean Microplastic Accumulation",
-        ocean: "Southern Ocean",
-        description: "High density microplastic zone detected near whale feeding grounds."
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          [
-            [165, -60],
-            [180, -60],
-            [180, -70],
-            [165, -70],
-            [165, -60]
-          ]
-        ]
-      }
-    }
-  ]
-};
+const NASA_GIBS_CHLOROPHYLL_LAYER = "VIIRS_NOAA20_Chlorophyll_a_v2022.0_NRT";
 
 function getGibsDate(daysBack = 2) {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - daysBack);
-
   return date.toISOString().slice(0, 10);
 }
 
@@ -169,43 +19,55 @@ function getFirstGeometryType(geojson) {
   return firstFeature?.geometry?.type || "LineString";
 }
 
-function getGeoJsonRenderer(geometryType) {
-  if (geometryType.includes("Point")) {
-    return {
-      type: "simple",
-      symbol: {
-        type: "simple-marker",
-        color: [37, 99, 235, 0.9],
-        outline: {
-          color: [255, 255, 255, 0.95],
-          width: 0.8
-        },
-        size: 6
-      }
-    };
-  }
+function getWhaleSymbol(color = [0, 240, 255]) {
+  return {
+    type: "simple-line",
+    color: [...color, 0.9],
+    width: 4,
+    cap: "round",
+    join: "round"
+  };
+}
 
-  if (geometryType.includes("Polygon")) {
+function getGeoJsonRenderer(geometryType, title) {
+  const isGarbage = geometryType.includes("Polygon") || title?.toLowerCase().includes("garbage");
+  
+  if (isGarbage) {
     return {
-      type: "simple",
-      symbol: {
+      type: "unique-value",
+      field: "risk_level",
+      defaultSymbol: {
         type: "simple-fill",
-        color: [37, 99, 235, 0.22],
-        outline: {
-          color: [37, 99, 235, 0.9],
-          width: 1.2
+        color: [255, 69, 0, 0.15],
+        outline: { color: [255, 20, 147, 0.7], width: 1.5, style: "dash" }
+      },
+      uniqueValueInfos: [
+        {
+          value: "Critical",
+          symbol: {
+            type: "simple-fill",
+            color: [220, 38, 38, 0.35],
+            outline: { color: [255, 255, 255, 0.8], width: 2, style: "short-dash" }
+          }
+        },
+        {
+          value: "High",
+          symbol: {
+            type: "simple-fill",
+            color: [249, 115, 22, 0.25],
+            outline: { color: [255, 255, 255, 0.6], width: 1.5, style: "dot" }
+          }
         }
-      }
+      ]
     };
   }
 
+  // Professional teal for whales, gold for ships
   return {
     type: "simple",
-    symbol: {
-      type: "simple-line",
-      color: [37, 99, 235, 0.95],
-      width: 3
-    }
+    symbol: title?.toLowerCase().includes("shipping") 
+      ? { type: "simple-line", color: [255, 165, 0, 0.8], width: 2, cap: "round" }
+      : getWhaleSymbol([0, 240, 255])
   };
 }
 
@@ -216,14 +78,21 @@ async function createDataGeoJsonLayer({ url, title }) {
   return new GeoJSONLayer({
     url,
     title,
-    renderer: getGeoJsonRenderer(getFirstGeometryType(geojson))
+    outFields: ["*"],
+    renderer: getGeoJsonRenderer(getFirstGeometryType(geojson), title),
+    popupTemplate: {
+      title: "{name}",
+      content: [
+        { type: "text", text: "<b>Location:</b> {ocean}<br/><b>Risk:</b> {risk_level}" },
+        { type: "text", text: "<hr/>{description}" }
+      ]
+    }
   });
 }
 
 async function getDataGeoJsonFiles() {
   const response = await fetch("/api/geojson-files");
   const data = await response.json();
-
   return data.files || [];
 }
 
@@ -231,597 +100,328 @@ export default function OceanGuardDashboard() {
   const mapRef = useRef(null);
   const viewRef = useRef(null);
   const chlorophyllLayerRef = useRef(null);
-  const garbagePatchLayerRef = useRef(null);
-  const shipTrafficLayerRef = useRef(null);
   const dataGeoJsonLayersRef = useRef([]);
-  const dataGeoJsonVisibleRef = useRef(true);
   const fileInputRef = useRef(null);
+  
   const [chlorophyllVisible, setChlorophyllVisible] = useState(true);
-  const [garbagePatchesVisible, setGarbagePatchesVisible] = useState(false);
-  const [shipTrafficVisible, setShipTrafficVisible] = useState(false);
   const [dataGeoJsonVisible, setDataGeoJsonVisible] = useState(true);
   const [impactReport, setImpactReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [whaleData, setWhaleData] = useState(null);
   const [shippingData, setShippingData] = useState(null);
+  const [garbageData, setGarbageData] = useState(null);
+
+  const [hoveredWhale, setHoveredWhale] = useState(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    if (!mapRef.current || viewRef.current) {
-      return undefined;
-    }
+    if (!mapRef.current || viewRef.current) return;
 
-    const chlorophyllDate = getGibsDate();
     const chlorophyllLayer = new WebTileLayer({
-      urlTemplate:
-        `https://gibs-a.earthdata.nasa.gov/wmts/epsg3857/all/${NASA_GIBS_CHLOROPHYLL_LAYER}` +
-        `/default/${chlorophyllDate}/GoogleMapsCompatible_Level7/{level}/{row}/{col}.png`,
-      title: `NASA GIBS Chlorophyll-a (${chlorophyllDate})`,
-      opacity: 0.42,
-      visible: true,
-      copyright: "NASA GIBS / OB.DAAC"
+      urlTemplate: `https://gibs-a.earthdata.nasa.gov/wmts/epsg3857/all/${NASA_GIBS_CHLOROPHYLL_LAYER}/default/${getGibsDate()}/GoogleMapsCompatible_Level7/{level}/{row}/{col}.png`,
+      opacity: 0.4,
+      visible: true
     });
     chlorophyllLayerRef.current = chlorophyllLayer;
 
-    const garbagePatchUrl = URL.createObjectURL(
-      new Blob([JSON.stringify(GARBAGE_PATCHES_GEOJSON)], {
-        type: "application/geo+json"
-      })
-    );
-    const garbagePatchLayer = new GeoJSONLayer({
-      url: garbagePatchUrl,
-      title: "Approximate Global Garbage Patches",
-      visible: false,
-      renderer: {
-        type: "simple",
-        symbol: {
-          type: "simple-fill",
-          color: [245, 113, 39, 0.3],
-          outline: {
-            color: [173, 65, 20, 0.95],
-            width: 1.2
-          }
-        }
-      },
-      labelingInfo: [
-        {
-          labelExpressionInfo: {
-            expression: "$feature.name"
-          },
-          symbol: {
-            type: "label-3d",
-            symbolLayers: [
-              {
-                type: "text",
-                material: {
-                  color: [92, 45, 12, 255]
-                },
-                halo: {
-                  color: [255, 255, 255, 230],
-                  size: 1.2
-                },
-                font: {
-                  family: "Arial",
-                  weight: "bold"
-                },
-                size: 10
-              }
-            ]
-          }
-        }
-      ],
-      popupTemplate: {
-        title: "{name}",
-        content: [
-          {
-            type: "fields",
-            fieldInfos: [
-              {
-                fieldName: "ocean",
-                label: "Ocean"
-              },
-              {
-                fieldName: "description",
-                label: "Notes"
-              }
-            ]
-          }
-        ]
-      }
-    });
-    garbagePatchLayerRef.current = garbagePatchLayer;
-
-    const shipTrafficLayer = new GeoJSONLayer({
-      url: "/api/ships?minLat=25&maxLat=50&minLon=-130&maxLon=-105",
-      title: "MarineTraffic Ship Traffic",
-      visible: false,
-      outFields: ["*"],
-      renderer: {
-        type: "unique-value",
-        field: "vesselTypeGroup",
-        defaultSymbol: {
-          type: "simple-marker",
-          color: [103, 116, 142, 0.92],
-          outline: {
-            color: [255, 255, 255, 0.95],
-            width: 0.8
-          },
-          size: 6
-        },
-        uniqueValueInfos: [
-          {
-            value: "Tanker",
-            label: "Tankers",
-            symbol: {
-              type: "simple-marker",
-              color: [220, 38, 38, 0.95],
-              outline: {
-                color: [255, 255, 255, 0.95],
-                width: 0.8
-              },
-              size: 7
-            }
-          },
-          {
-            value: "Cargo",
-            label: "Cargo",
-            symbol: {
-              type: "simple-marker",
-              color: [37, 99, 235, 0.95],
-              outline: {
-                color: [255, 255, 255, 0.95],
-                width: 0.8
-              },
-              size: 7
-            }
-          },
-          {
-            value: "Other",
-            label: "Other vessels",
-            symbol: {
-              type: "simple-marker",
-              color: [82, 82, 91, 0.92],
-              outline: {
-                color: [255, 255, 255, 0.95],
-                width: 0.8
-              },
-              size: 6
-            }
-          }
-        ]
-      },
-      popupTemplate: {
-        title: "{name}",
-        content: [
-          {
-            type: "fields",
-            fieldInfos: [
-              {
-                fieldName: "vesselType",
-                label: "Ship type"
-              },
-              {
-                fieldName: "mmsi",
-                label: "MMSI"
-              },
-              {
-                fieldName: "timestamp",
-                label: "Last update"
-              }
-            ]
-          }
-        ]
-      }
-    });
-    shipTrafficLayerRef.current = shipTrafficLayer;
-
-    const map = new Map({
-      basemap: "oceans",
-      layers: [chlorophyllLayer, garbagePatchLayer, shipTrafficLayer]
-    });
-
+    const map = new Map({ basemap: "dark-gray-vector", layers: [chlorophyllLayer] });
     const view = new SceneView({
       container: mapRef.current,
       map,
       viewingMode: "global",
-      qualityProfile: "high",
-      camera: {
-        position: {
-          longitude: -155.0,
-          latitude: 15.0,
-          z: 14500000
-        },
-        heading: 0,
-        tilt: 18
-      },
-      environment: {
-        atmosphereEnabled: true,
-        starsEnabled: false,
-        lighting: {
-          type: "virtual"
-        }
-      },
-      popup: {
-        dockEnabled: true,
-        dockOptions: {
-          position: "top-right",
-          breakpoint: false
-        }
-      }
+      camera: { position: { longitude: -155, latitude: 15, z: 12000000 }, heading: 0, tilt: 15 },
+      environment: { atmosphereEnabled: true, starsEnabled: true, lighting: { type: "virtual" } },
+      ui: { components: ["attribution"] }
     });
 
     view.on("click", async (event) => {
       const response = await view.hitTest(event);
       const results = response.results.filter(r => r.graphic?.layer?.title?.includes("Whale") || r.graphic?.layer?.title?.includes("Uploaded"));
+      if (results.length > 0) handleAnalyzeSpecificPath(results[0].graphic.geometry.toJSON());
+    });
+
+    view.on("pointer-move", async (event) => {
+      setMousePos({ x: event.x, y: event.y });
+      const response = await view.hitTest(event);
       
-      if (results.length > 0) {
-        const graphic = results[0].graphic;
-        handleAnalyzeSpecificPath(graphic.geometry.toJSON());
+      // Check for whale paths
+      const whaleResult = response.results.find(r => 
+        r.graphic?.layer?.title?.toLowerCase().includes("whale") || 
+        r.graphic?.layer?.title?.toLowerCase().includes("uploaded")
+      );
+
+      if (whaleResult) {
+        setHoveredWhale(whaleResult.graphic.attributes.name || whaleResult.graphic.attributes.whale_id || "Active Migration Path");
+      } else {
+        setHoveredWhale(null);
+      }
+
+      // Handle garbage patch popups separately if needed
+      const garbageResult = response.results.find(r => r.graphic?.layer?.title?.toLowerCase().includes("garbage"));
+      if (garbageResult) {
+        view.popup.open({ location: view.toMap(event), features: [garbageResult.graphic] });
+      } else if (!whaleResult) {
+        view.popup.close();
       }
     });
 
     viewRef.current = view;
+    loadDynamicLayers(map);
 
-    createDataGeoJsonLayers(map);
-
-    return () => {
-      view.destroy();
-      viewRef.current = null;
-      chlorophyllLayerRef.current = null;
-      garbagePatchLayerRef.current = null;
-      shipTrafficLayerRef.current = null;
-      dataGeoJsonLayersRef.current = [];
-      URL.revokeObjectURL(garbagePatchUrl);
-    };
+    return () => { view.destroy(); viewRef.current = null; };
   }, []);
 
-  const createDataGeoJsonLayers = async (map) => {
-    const dataGeoJsonFiles = await getDataGeoJsonFiles();
-    const dataGeoJsonLayers = await Promise.all(dataGeoJsonFiles.map(createDataGeoJsonLayer));
+  const loadDynamicLayers = async (map) => {
+    const files = await getDataGeoJsonFiles();
+    const layers = await Promise.all(files.map(createDataGeoJsonLayer));
+    layers.forEach(l => l.visible = true);
+    dataGeoJsonLayersRef.current = layers;
+    map.addMany(layers);
 
-    dataGeoJsonLayers.forEach((layer) => {
-      layer.visible = dataGeoJsonVisibleRef.current;
-    });
-
-    dataGeoJsonLayersRef.current = dataGeoJsonLayers;
-    map.addMany(dataGeoJsonLayers);
-
-    // Specifically look for whale data for impact analysis
-    const whaleFile = dataGeoJsonFiles.find(f => f.url.includes("whales"));
-    if (whaleFile) {
-      const res = await fetch(whaleFile.url);
-      const data = await res.json();
-      setWhaleData(data);
-    }
-
-    const shipFile = dataGeoJsonFiles.find(f => f.url.includes("shipping_lanes"));
-    if (shipFile) {
-      const res = await fetch(shipFile.url);
-      const data = await res.json();
-      setShippingData(data);
-    }
+    const whaleFile = files.find(f => f.url.includes("whales"));
+    if (whaleFile) fetch(whaleFile.url).then(r => r.json()).then(setWhaleData);
+    const shipFile = files.find(f => f.url.includes("shipping_lanes"));
+    if (shipFile) fetch(shipFile.url).then(r => r.json()).then(setShippingData);
+    const garbageFile = files.find(f => f.url.includes("garbage_patches"));
+    if (garbageFile) fetch(garbageFile.url).then(r => r.json()).then(setGarbageData);
   };
 
   const handleAnalyzeSpecificPath = (geometry) => {
     setIsAnalyzing(true);
-    setImpactReport("AI Agent is calculating intersections with Shipping Lanes and Contamination zones...");
+    setImpactReport({ status: "SYNTHESIZING", statusColor: "text-teal-400", riskScore: 0, sections: [] });
     
     setTimeout(() => {
-      // Convert ArcGIS geometry to GeoJSON Feature for Turf
-      const whaleFeature = {
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: geometry.paths[0]
-        },
-        properties: { name: "Selected Whale Pod" }
-      };
-
-      const analysis = analyzeSpecificPodImpact(whaleFeature, GARBAGE_PATCHES_GEOJSON, shippingData);
-      const report = generateAgenticReport(analysis);
-      setImpactReport(report);
-      setIsAnalyzing(false);
+      try {
+        const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geometry.paths[0] }, properties: { name: "Target Pod" } };
+        const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData, shippingData);
+        setImpactReport(generateAgenticReport(analysis));
+      } catch (err) {
+        console.error("Analysis Error:", err);
+        setImpactReport({ status: "ERROR", statusColor: "text-red-500", riskScore: 0, sections: [] });
+      } finally {
+        setIsAnalyzing(false);
+      }
     }, 1200);
   };
 
-  const handleGenerateReport = async () => {
-    if (!whaleData) {
-      alert("No whale migration data loaded yet.");
-      return;
-    }
-
+  const handleGenerateReport = () => {
+    if (!whaleData) return alert("No whale migration data loaded.");
     setIsAnalyzing(true);
-    // Simulate a bit of processing time for "AI" feel
+    setImpactReport({ status: "PROCESSING", statusColor: "text-zinc-500", riskScore: 0, sections: [] });
+    
     setTimeout(() => {
-      const analysis = analyzeImpact(whaleData, GARBAGE_PATCHES_GEOJSON);
-      const report = generateMockAIReport(analysis);
-      setImpactReport(report);
-      setIsAnalyzing(false);
+      try {
+        const analysis = analyzeImpact(whaleData, garbageData);
+        setImpactReport(generateMockAIReport(analysis));
+      } catch (err) {
+        console.error("Global Report Error:", err);
+        setImpactReport({ status: "ERROR", statusColor: "text-red-500", riskScore: 0, sections: [] });
+      } finally {
+        setIsAnalyzing(false);
+      }
     }, 1500);
   };
 
-  const handleCsvUpload = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    Papa.parse(file, {
-      header: true,
-      dynamicTyping: true,
-      skipEmptyLines: true,
-      transformHeader: (h) => h.trim().toLowerCase(), // Lowercase for easier matching
-      complete: async (results) => {
-        const headers = results.meta.fields;
-        
-        // Smart Detection: Find columns that look like coordinates
-        const latHeader = headers.find(h => h.includes("lat") || h === "y");
-        const lonHeader = headers.find(h => h.includes("lon") || h.includes("long") || h === "x");
-
-        if (!latHeader || !lonHeader) {
-          alert(`Could not find coordinate columns. Detected headers: ${headers.join(", ")}`);
-          return;
-        }
-
-        const data = results.data.filter(row => {
-          const lat = row[latHeader];
-          const lon = row[lonHeader];
-          return lat !== null && lat !== undefined && lat !== "" && 
-                 lon !== null && lon !== undefined && lon !== "";
-        });
-
-        console.log(`Smart Upload: Using '${latHeader}' and '${lonHeader}'. Found ${data.length} valid points.`);
-
-        const coordinates = [];
-        let lastCoord = null;
-
-        data.forEach(row => {
-          const lat = parseFloat(row[latHeader]);
-          const lon = parseFloat(row[lonHeader]);
-          
-          if (lastCoord) {
-            // Basic distance check (Euclidean approx for speed in browser)
-            const dx = lon - lastCoord[0];
-            const dy = lat - lastCoord[1];
-            const distSq = dx*dx + dy*dy;
-            
-            // Skip if too close (roughly 2km at equator approx)
-            if (distSq < 0.0004) return; 
-            
-            // Break if too far (roughly 500km approx)
-            if (distSq > 25) {
-              // For a simple hackathon upload, we just start a new segment or keep the jump
-              // but we'll allow it for now to avoid complex multi-line features in the quick upload
-            }
-          }
-
-          coordinates.append([lon, lat]);
-          lastCoord = [lon, lat];
-        });
-
-        if (coordinates.length < 2) {
-          alert("Not enough unique movement points found to generate a path.");
-          return;
-        }
-
-        const geojson = {
-          type: "FeatureCollection",
-          features: [
-            {
-              type: "Feature",
-              properties: { 
-                name: file.name.replace(".csv", ""),
-                id: "uploaded-migration",
-                pointCount: coordinates.length
-              },
-              geometry: {
-                type: "LineString",
-                coordinates
-              }
-            }
-          ]
-        };
-
-        // Update whaleData so the AI Impact Report analyzes this new data!
-        setWhaleData(geojson);
-
-        const blob = new Blob([JSON.stringify(geojson)], { type: "application/geo+json" });
-        const url = URL.createObjectURL(blob);
-        
-        const newLayer = new GeoJSONLayer({
-          url,
-          title: `Uploaded: ${file.name}`,
-          renderer: {
-            type: "simple",
-            symbol: {
-              type: "simple-line",
-              color: [255, 0, 150, 0.9], // Bright pink for uploaded paths
-              width: 4
-            }
-          }
-        });
-
-        if (viewRef.current?.map) {
-          viewRef.current.map.add(newLayer);
-          viewRef.current.goTo(newLayer.fullExtent);
-          alert(`Successfully uploaded ${file.name} and mapped ${data.length} points!`);
-        }
-      }
-    });
-  };
-
-  const toggleChlorophyll = () => {
-    const nextVisible = !chlorophyllVisible;
-    setChlorophyllVisible(nextVisible);
-
-    if (chlorophyllLayerRef.current) {
-      chlorophyllLayerRef.current.visible = nextVisible;
-    }
-  };
-
-  const toggleGarbagePatches = () => {
-    const nextVisible = !garbagePatchesVisible;
-    setGarbagePatchesVisible(nextVisible);
-
-    if (garbagePatchLayerRef.current) {
-      garbagePatchLayerRef.current.visible = nextVisible;
-    }
-  };
-
-  const toggleShipTraffic = () => {
-    const nextVisible = !shipTrafficVisible;
-    setShipTrafficVisible(nextVisible);
-
-    if (shipTrafficLayerRef.current) {
-      shipTrafficLayerRef.current.visible = nextVisible;
-    }
-  };
-
-  const toggleDataGeoJsonLayers = () => {
-    const nextVisible = !dataGeoJsonVisible;
-    setDataGeoJsonVisible(nextVisible);
-    dataGeoJsonVisibleRef.current = nextVisible;
-
-    dataGeoJsonLayersRef.current.forEach((layer) => {
-      layer.visible = nextVisible;
-    });
-  };
-
   return (
-    <main className="flex h-screen bg-zinc-50 text-zinc-950">
-      <aside className="flex w-[30%] min-w-[320px] flex-col border-r border-zinc-200 bg-white">
-        <div className="border-b border-zinc-200 p-6">
-          <p className="text-sm font-semibold uppercase tracking-wide text-teal-700">
-            OceanGuard
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">Data Insights</h1>
-          <p className="mt-3 text-sm leading-6 text-zinc-600">
-            A clean starting point for ocean risk layers and globe-based exploration.
-          </p>
-        </div>
-
-        <div className="border-b border-zinc-200 px-6 py-4">
-          <span className="text-sm font-medium text-zinc-700">Globe view ready</span>
-        </div>
-
-        <div className="border-b border-zinc-200 p-6">
-          <h2 className="text-sm font-semibold text-zinc-800">Ocean layers</h2>
-          <button
-            type="button"
-            onClick={toggleChlorophyll}
-            className={`mt-4 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
-              chlorophyllVisible
-                ? "border-teal-700 bg-teal-700 text-white"
-                : "border-zinc-300 bg-white text-zinc-700"
-            }`}
-          >
-            Chlorophyll {chlorophyllVisible ? "On" : "Off"}
-          </button>
-          <button
-            type="button"
-            onClick={toggleGarbagePatches}
-            className={`mt-3 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
-              garbagePatchesVisible
-                ? "border-orange-700 bg-orange-600 text-white"
-                : "border-zinc-300 bg-white text-zinc-700"
-            }`}
-          >
-            Toggle Garbage Patches
-          </button>
-          <button
-            type="button"
-            onClick={toggleShipTraffic}
-            className={`mt-3 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
-              shipTrafficVisible
-                ? "border-sky-700 bg-sky-700 text-white"
-                : "border-zinc-300 bg-white text-zinc-700"
-            }`}
-          >
-            Toggle Ship Traffic
-          </button>
-          <button
-            type="button"
-            onClick={toggleDataGeoJsonLayers}
-            className={`mt-3 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
-              dataGeoJsonVisible
-                ? "border-blue-700 bg-blue-700 text-white"
-                : "border-zinc-300 bg-white text-zinc-700"
-            }`}
-          >
-            Toggle GeoJSON Layers
-          </button>
-        </div>
-
-        <div className="border-b border-zinc-200 p-6">
-          <h2 className="text-sm font-semibold text-zinc-800">Impact Analysis</h2>
-          <button
-            type="button"
-            onClick={handleGenerateReport}
-            disabled={isAnalyzing}
-            className={`mt-4 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
-              isAnalyzing
-                ? "bg-zinc-100 text-zinc-400 border-zinc-200 cursor-not-allowed"
-                : "border-teal-700 bg-white text-teal-700 hover:bg-teal-50"
-            }`}
-          >
-            {isAnalyzing ? "Analyzing Ecosystem..." : "Agent Mode: Click a Whale Path"}
-          </button>
-
-          {impactReport && (
-            <div className="mt-4 rounded-lg bg-zinc-50 p-4 border border-zinc-200">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-bold uppercase text-zinc-400 tracking-wider">Analysis Result</span>
-                <button 
-                  onClick={() => setImpactReport("")}
-                  className="text-xs text-zinc-400 hover:text-zinc-600"
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="text-sm leading-relaxed text-zinc-700 whitespace-pre-wrap max-h-64 overflow-y-auto font-serif">
-                {impactReport}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="border-b border-zinc-200 p-6">
-          <h2 className="text-sm font-semibold text-zinc-800">Data Management</h2>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleCsvUpload}
-            accept=".csv"
-            className="hidden"
-          />
-          <button
-            type="button"
+    <div className="flex h-screen w-screen bg-black text-white overflow-hidden font-sans">
+      {/* Cinematic Sidebar */}
+      <aside className="relative z-20 flex w-[380px] flex-col border-r border-white/10 bg-black/80 backdrop-blur-2xl">
+        {/* Header Branding */}
+        <div className="border-b border-white/10 p-8">
+          <h2 className="text-3xl font-bold tracking-tighter">OceanGuard</h2>
+          <p className="mt-1 font-serif italic text-zinc-400 text-lg">Saving Whale Lives</p>
+          
+          <button 
             onClick={() => fileInputRef.current.click()}
-            className="mt-4 w-full rounded-md border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50"
+            className="mt-8 flex w-full items-center justify-center gap-3 rounded-lg bg-white py-4 text-xs font-black uppercase tracking-[0.2em] text-black transition hover:bg-teal-400"
           >
-            Upload Migration CSV
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Import Migration CSV
           </button>
-          <p className="mt-2 text-xs text-zinc-500 text-center">
-            Upload CSV with latitude and longitude columns
-          </p>
+          <input type="file" ref={fileInputRef} onChange={(e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            Papa.parse(file, { header: true, dynamicTyping: true, complete: (res) => {
+              try {
+                const latH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lat") || k === "y");
+                const lonH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lon") || k === "x");
+                const coords = res.data.map(r => [parseFloat(r[lonH]), parseFloat(r[latH])]).filter(c => !isNaN(c[0]));
+                
+                const formatWhaleName = (name) => {
+                  return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
+                };
+
+                const species = formatWhaleName(file.name);
+                const geojson = { 
+                  type: "FeatureCollection", 
+                  features: [{ 
+                    type: "Feature", 
+                    geometry: { type: "LineString", coordinates: coords }, 
+                    properties: { name: species, file_source: file.name } 
+                  }] 
+                };
+                setWhaleData(geojson);
+                const layer = new GeoJSONLayer({ 
+                  url: URL.createObjectURL(new Blob([JSON.stringify(geojson)], { type: "application/geo+json" })), 
+                  title: `Uploaded: ${file.name}`, 
+                  renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) } 
+                });
+                viewRef.current.map.add(layer);
+                viewRef.current.goTo(layer.fullExtent);
+              } catch (err) {
+                console.error("CSV Import Error:", err);
+                alert("Failed to parse CSV. Please ensure it has Latitude/Longitude headers.");
+              }
+            }});
+          }} accept=".csv" className="hidden" />
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
-          <p className="text-sm leading-6 text-zinc-600">
-            Global chlorophyll-a from NASA GIBS is shown as a transparent satellite
-            overlay.
-          </p>
-          <p className="mt-4 text-sm leading-6 text-zinc-600">
-            Garbage patch regions are approximate gyre-scale polygons for visual
-            planning and demo use.
-          </p>
-          <p className="mt-4 text-sm leading-6 text-zinc-600">
-            Ship traffic is loaded from the MarineTraffic Flask endpoint for the
-            current demo bounding box.
-          </p>
+        {/* Dashboard Content */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-10">
+          {/* Layer Toggles */}
+          <section>
+            <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500 mb-6">Ocean Intelligence</h3>
+            <div className="space-y-3">
+              <button 
+                onClick={() => { setChlorophyllVisible(!chlorophyllVisible); chlorophyllLayerRef.current.visible = !chlorophyllVisible; }}
+                className={`flex w-full items-center justify-between rounded-lg border px-5 py-4 transition-all ${chlorophyllVisible ? "border-teal-500/50 bg-teal-500/10 text-teal-400" : "border-white/10 bg-white/5 text-zinc-500"}`}
+              >
+                <span className="text-sm font-semibold tracking-wide">NASA Chlorophyll-a</span>
+                <div className={`h-2 w-2 rounded-full ${chlorophyllVisible ? "bg-teal-400 shadow-[0_0_8px_rgba(45,212,191,0.8)]" : "bg-zinc-700"}`} />
+              </button>
+              
+              <button 
+                onClick={() => { setDataGeoJsonVisible(!dataGeoJsonVisible); dataGeoJsonLayersRef.current.forEach(l => l.visible = !dataGeoJsonVisible); }}
+                className={`flex w-full items-center justify-between rounded-lg border px-5 py-4 transition-all ${dataGeoJsonVisible ? "border-blue-500/50 bg-blue-500/10 text-blue-400" : "border-white/10 bg-white/5 text-zinc-500"}`}
+              >
+                <span className="text-sm font-semibold tracking-wide">Ecosystem Analytics</span>
+                <div className={`h-2 w-2 rounded-full ${dataGeoJsonVisible ? "bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" : "bg-zinc-700"}`} />
+              </button>
+            </div>
+          </section>
+
+          {/* AI Analysis Feed */}
+          <section className="flex flex-col h-[500px]">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-zinc-500">Agentic Insights</h3>
+              {impactReport && (
+                <button 
+                  onClick={() => setImpactReport(null)}
+                  className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 hover:text-white transition"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            
+            <div className="flex-1 rounded-xl border border-white/10 bg-white/5 p-6 overflow-y-auto custom-scrollbar">
+              {impactReport ? (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  {/* Status Header */}
+                  <div className="flex items-center justify-between">
+                    <span className={`text-[10px] font-black uppercase tracking-[0.3em] px-3 py-1 rounded border border-current ${impactReport.statusColor}`}>
+                      {impactReport.status}
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-500">SCORE: {impactReport.riskScore.toFixed(1)}/10</span>
+                  </div>
+
+                  {/* Risk Meter */}
+                  <div className="space-y-2">
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-1000 ${impactReport.riskScore > 5 ? "bg-red-500" : "bg-teal-400"}`}
+                        style={{ width: `${impactReport.riskScore * 10}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sections */}
+                  {impactReport.sections.map((section) => (
+                    <div key={section.id} className={`space-y-3 ${section.isSpecial ? "pt-6 border-t border-white/10" : ""}`}>
+                      <div className="flex items-center gap-2">
+                        <div className={`h-1 w-1 rounded-full ${section.isAlert ? "bg-orange-400 animate-pulse" : "bg-zinc-600"}`} />
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">{section.label}</h4>
+                      </div>
+                      <p className={`text-sm font-bold ${section.isSpecial ? "font-serif italic text-teal-400 text-lg" : "text-white"}`}>
+                        {section.value}
+                      </p>
+                      <ul className="space-y-2">
+                        {section.details.map((detail, idx) => (
+                          <li key={idx} className="text-xs leading-relaxed text-zinc-500 pl-3 border-l border-white/5">
+                            {detail}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-40">
+                  <div className="h-12 w-12 rounded-full border border-dashed border-white/30 animate-spin-slow" />
+                  <p className="text-xs uppercase tracking-tighter leading-relaxed">
+                    Intelligence Feed Offline<br/>
+                    <span className="text-[10px] text-zinc-600">Select a migration path to initialize agent</span>
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <button 
+              onClick={handleGenerateReport}
+              className="mt-4 flex w-full items-center justify-center gap-3 rounded-lg border border-white/20 bg-white/5 py-4 text-sm font-bold uppercase tracking-widest transition hover:bg-white hover:text-black"
+            >
+              Analyze Global Risk
+            </button>
+          </section>
+        </div>
+        
+        {/* Footer Status */}
+        <div className="border-t border-white/10 p-8 text-[10px] uppercase tracking-[0.2em] text-zinc-600">
+          System Online // Global Data Discovery Active
         </div>
       </aside>
 
-      <section className="relative h-screen flex-1">
+      {/* Fullscreen Map */}
+      <main className="relative flex-1 bg-[#1a1a1a]">
         <div ref={mapRef} className="h-full w-full" />
-      </section>
-    </main>
+        
+        {/* Floating Intelligence HUD */}
+        {hoveredWhale && (
+          <div 
+            className="pointer-events-none absolute z-50 rounded-lg border border-teal-500/30 bg-black/80 px-4 py-2 backdrop-blur-md shadow-[0_0_20px_rgba(20,184,166,0.2)] animate-in fade-in zoom-in-95 duration-200"
+            style={{ left: mousePos.x + 20, top: mousePos.y - 20 }}
+          >
+            <div className="text-[10px] font-black uppercase tracking-[0.2em] text-teal-400 mb-0.5">Tracking Pod</div>
+            <div className="text-sm font-bold text-white whitespace-nowrap">{hoveredWhale}</div>
+          </div>
+        )}
+
+        <div className="absolute top-8 right-8 z-30 flex flex-col gap-4">
+          {isAnalyzing && (
+            <div className="flex items-center gap-3 rounded-full bg-black/60 px-6 py-3 backdrop-blur-md border border-teal-500/30">
+              <div className="h-2 w-2 animate-pulse rounded-full bg-teal-400" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-teal-400">Agent Processing</span>
+            </div>
+          )}
+          
+          {hoveredWhale && (
+            <div className="flex items-center gap-3 rounded-full bg-black/60 px-6 py-3 backdrop-blur-md border border-white/10">
+              <div className="h-2 w-2 rounded-full bg-white shadow-[0_0_10px_white]" />
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white">{hoveredWhale}</span>
+            </div>
+          )}
+        </div>
+      </main>
+
+      <style jsx>{`
+        .animate-spin-slow {
+          animation: spin 8s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </div>
   );
 }

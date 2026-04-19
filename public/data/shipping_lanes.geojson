@@ -3,7 +3,7 @@
   "features": [
     {
       "type": "Feature",
-      "properties": { "name": "Trans-Pacific Route", "traffic_density": "High" },
+      "properties": { "name": "Trans-Pacific Route (North)", "traffic_density": "High" },
       "geometry": {
         "type": "LineString",
         "coordinates": [
@@ -17,27 +17,17 @@
       "geometry": {
         "type": "LineString",
         "coordinates": [
-          [-74, 40], [-60, 45], [-40, 50], [-20, 50], [0, 48], [5, 51]
+          [-74, 40], [-60, 42], [-40, 45], [-20, 45], [0, 48], [5, 51]
         ]
       }
     },
     {
       "type": "Feature",
-      "properties": { "name": "Southern Whale Sanctuary Lane", "traffic_density": "Medium" },
+      "properties": { "name": "Asia-Europe via Suez (Approx)", "traffic_density": "Critical" },
       "geometry": {
         "type": "LineString",
         "coordinates": [
-          [150, -40], [160, -50], [170, -60], [180, -65], [-170, -65], [-160, -60]
-        ]
-      }
-    },
-    {
-      "type": "Feature",
-      "properties": { "name": "Indian Ocean Passage", "traffic_density": "High" },
-      "geometry": {
-        "type": "LineString",
-        "coordinates": [
-          [45, 12], [60, 15], [80, 10], [100, 5], [115, -10]
+          [120, 22], [105, 5], [80, 6], [60, 15], [45, 12], [32, 30], [20, 35], [5, 40]
         ]
       }
     }

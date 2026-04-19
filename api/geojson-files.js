@@ -13,6 +13,10 @@ export default function handler(req, res) {
     {
       url: "/data/shipping_lanes.geojson",
       title: "Global Shipping Lanes"
+    },
+    {
+      url: "/data/garbage_patches.geojson",
+      title: "Great Garbage Patches"
     }
   ];
 

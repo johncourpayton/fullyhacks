@@ -1,0 +1,120 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "North Pacific Garbage Patch (GPGP)",
+        "ocean": "North Pacific",
+        "description": "The largest accumulation of ocean plastic in the world. This represents the high-density core between Hawaii and California.",
+        "risk_level": "Critical"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-150, 25],
+            [-140, 25],
+            [-130, 32],
+            [-140, 40],
+            [-150, 40],
+            [-158, 33],
+            [-150, 25]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "South Pacific Garbage Patch",
+        "ocean": "South Pacific",
+        "description": "High concentration core within the South Pacific subtropical gyre.",
+        "risk_level": "High"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-130, -20],
+            [-115, -20],
+            [-100, -30],
+            [-110, -40],
+            [-125, -40],
+            [-140, -30],
+            [-130, -20]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "North Atlantic Garbage Patch",
+        "ocean": "North Atlantic",
+        "description": "Dense accumulation zone in the Sargasso Sea.",
+        "risk_level": "High"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-65, 25],
+            [-50, 25],
+            [-40, 35],
+            [-50, 40],
+            [-65, 40],
+            [-72, 33],
+            [-65, 25]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "South Atlantic Garbage Patch",
+        "ocean": "South Atlantic",
+        "description": "Core accumulation zone between Brazil and South Africa.",
+        "risk_level": "Medium"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [-20, -20],
+            [-5, -20],
+            [5, -30],
+            [-5, -38],
+            [-20, -38],
+            [-30, -30],
+            [-20, -20]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Indian Ocean Garbage Patch",
+        "ocean": "Indian Ocean",
+        "description": "Central concentration within the southern Indian Ocean gyre.",
+        "risk_level": "High"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [60, -15],
+            [85, -15],
+            [95, -25],
+            [85, -35],
+            [65, -35],
+            [55, -25],
+            [60, -15]
+          ]
+        ]
+      }
+    }
+  ]
+}
