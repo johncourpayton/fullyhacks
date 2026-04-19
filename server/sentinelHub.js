@@ -358,9 +358,11 @@ export async function fetchOilSpillGeoJson({ bbox, hoursBack = 48, regionName = 
   }
 }
 
-export async function fetchRegionalOilSpillGeoJson({ hoursBack = 48 }) {
+export async function fetchRegionalOilSpillGeoJson({ hoursBack = 48, limit = oilSpillRegions.length }) {
+  const boundedLimit = Math.min(Math.max(limit, 1), oilSpillRegions.length);
+  const regions = oilSpillRegions.slice(0, boundedLimit);
   const collections = await Promise.all(
-    oilSpillRegions.map((region) =>
+    regions.map((region) =>
       fetchOilSpillGeoJson({
         bbox: region.bbox,
         hoursBack,
@@ -375,7 +377,9 @@ export async function fetchRegionalOilSpillGeoJson({ hoursBack = 48 }) {
     properties: {
       source: "Regional Sentinel-1 oil spill scan",
       regions: oilSpillRegions,
+      activeRegions: regions,
       regionCount: oilSpillRegions.length,
+      activeRegionCount: regions.length,
       featureCount: collections.reduce((total, collection) => total + collection.features.length, 0)
     }
   };

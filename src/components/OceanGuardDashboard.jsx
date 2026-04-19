@@ -10,110 +10,16 @@ import SceneView from "@arcgis/core/views/SceneView.js";
 
 const OCEAN_DATA_LAYERS = [
   {
-    id: "chlorophyll",
-    label: "Algal Blooms",
-    title: "Chlorophyll-a",
-    source: "demo-graphics"
-  },
-  {
-    id: "temperature",
-    label: "Sea Temp",
-    title: "Sea Surface Temperature",
-    source: "demo-graphics"
-  },
-  {
     id: "currents",
     label: "Currents",
     title: "Ocean Surface Currents",
     portalItemId: "3f453a562771441f9d42a2f03c9b6111",
     source: "arcgis-portal",
-    opacity: 0.95
+    opacity: 1
   }
 ];
 
-const CHLOROPHYLL_BLOOMS = [
-  {
-    name: "California Upwelling Bloom",
-    coordinates: [
-      [
-        [-126.5, 32.0],
-        [-121.0, 33.0],
-        [-120.5, 38.0],
-        [-126.0, 40.0],
-        [-130.0, 36.0],
-        [-126.5, 32.0]
-      ]
-    ]
-  },
-  {
-    name: "North Atlantic Spring Bloom",
-    coordinates: [
-      [
-        [-55.0, 42.0],
-        [-25.0, 42.0],
-        [-18.0, 55.0],
-        [-42.0, 62.0],
-        [-60.0, 52.0],
-        [-55.0, 42.0]
-      ]
-    ]
-  },
-  {
-    name: "Arabian Sea Bloom",
-    coordinates: [
-      [
-        [52.0, 9.0],
-        [70.0, 8.0],
-        [74.0, 19.0],
-        [62.0, 25.0],
-        [50.0, 19.0],
-        [52.0, 9.0]
-      ]
-    ]
-  }
-];
-
-const SEA_TEMPERATURE_BANDS = [
-  {
-    name: "Warm Equatorial Waters",
-    color: [239, 68, 68, 0.28],
-    coordinates: [
-      [
-        [-180.0, -18.0],
-        [180.0, -18.0],
-        [180.0, 18.0],
-        [-180.0, 18.0],
-        [-180.0, -18.0]
-      ]
-    ]
-  },
-  {
-    name: "Temperate Mid-Latitude Waters",
-    color: [250, 204, 21, 0.22],
-    coordinates: [
-      [
-        [-180.0, 18.0],
-        [180.0, 18.0],
-        [180.0, 45.0],
-        [-180.0, 45.0],
-        [-180.0, 18.0]
-      ]
-    ]
-  },
-  {
-    name: "Cool Southern Ocean Waters",
-    color: [59, 130, 246, 0.22],
-    coordinates: [
-      [
-        [-180.0, -60.0],
-        [180.0, -60.0],
-        [180.0, -35.0],
-        [-180.0, -35.0],
-        [-180.0, -60.0]
-      ]
-    ]
-  }
-];
+const MAX_OIL_REGIONS = 6;
 
 function resolveApiBaseUrl() {
   const { hostname, protocol } = window.location;
@@ -158,56 +64,6 @@ function polylineFromGeoJson(path) {
   });
 }
 
-function addChlorophyllGraphics(layer) {
-  CHLOROPHYLL_BLOOMS.forEach((bloom) => {
-    layer.add(
-      new Graphic({
-        geometry: polygonFromGeoJson({
-          type: "Polygon",
-          coordinates: bloom.coordinates
-        }),
-        attributes: {
-          name: bloom.name,
-          layerType: "chlorophyll"
-        },
-        symbol: {
-          type: "simple-fill",
-          color: [34, 197, 94, 0.42],
-          outline: {
-            color: [21, 128, 61, 0.9],
-            width: 1.2
-          }
-        }
-      })
-    );
-  });
-}
-
-function addSeaTemperatureGraphics(layer) {
-  SEA_TEMPERATURE_BANDS.forEach((band) => {
-    layer.add(
-      new Graphic({
-        geometry: polygonFromGeoJson({
-          type: "Polygon",
-          coordinates: band.coordinates
-        }),
-        attributes: {
-          name: band.name,
-          layerType: "temperature"
-        },
-        symbol: {
-          type: "simple-fill",
-          color: band.color,
-          outline: {
-            color: [39, 39, 42, 0.35],
-            width: 0.6
-          }
-        }
-      })
-    );
-  });
-}
-
 function findIntersections(contamination, migrations) {
   return contamination.flatMap((pocket) => {
     const polygon = polygonFromGeoJson(pocket.geometry);
@@ -234,21 +90,18 @@ export default function OceanGuardDashboard() {
   const oilSpillLayerRef = useRef(null);
   const oceanDataLayersRef = useRef({});
   const oceanLayerVisibilityRef = useRef({
-    chlorophyll: false,
-    temperature: false,
     currents: false
   });
   const [contamination, setContamination] = useState([]);
   const [migrations, setMigrations] = useState([]);
   const [oilSpills, setOilSpills] = useState([]);
+  const [oilRegionLimit, setOilRegionLimit] = useState(2);
+  const [oilRegionCount, setOilRegionCount] = useState(MAX_OIL_REGIONS);
+  const [oilLoading, setOilLoading] = useState(false);
   const [oceanLayerVisibility, setOceanLayerVisibility] = useState({
-    chlorophyll: false,
-    temperature: false,
     currents: false
   });
   const [oceanLayerStatus, setOceanLayerStatus] = useState({
-    chlorophyll: "loading",
-    temperature: "loading",
     currents: "loading"
   });
   const [selectedPocketId, setSelectedPocketId] = useState(null);
@@ -304,8 +157,9 @@ export default function OceanGuardDashboard() {
     let active = true;
 
     async function loadOilSpills() {
+      setOilLoading(true);
       try {
-        const response = await fetch(`${apiBaseUrl}/api/oil-spills`);
+        const response = await fetch(`${apiBaseUrl}/api/oil-spills?limit=${oilRegionLimit}`);
 
         if (!response.ok) {
           throw new Error(`Oil spill API returned ${response.status}`);
@@ -315,9 +169,14 @@ export default function OceanGuardDashboard() {
 
         if (active) {
           setOilSpills(geoJson.features || []);
+          setOilRegionCount(geoJson.properties?.regionCount || MAX_OIL_REGIONS);
         }
       } catch (requestError) {
         console.warn("Oil spill overlay unavailable:", requestError.message);
+      } finally {
+        if (active) {
+          setOilLoading(false);
+        }
       }
     }
 
@@ -326,7 +185,7 @@ export default function OceanGuardDashboard() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [oilRegionLimit]);
 
   const alerts = useMemo(
     () => findIntersections(contamination, migrations),
@@ -343,39 +202,14 @@ export default function OceanGuardDashboard() {
     }
 
     const contaminationLayer = new GraphicsLayer({ title: "Contamination Pockets" });
-    const chlorophyllLayer = new GraphicsLayer({
-      title: "Chlorophyll-a",
-      visible: oceanLayerVisibilityRef.current.chlorophyll
-    });
-    const temperatureLayer = new GraphicsLayer({
-      title: "Sea Surface Temperature",
-      visible: oceanLayerVisibilityRef.current.temperature
-    });
     const oilSpillLayer = new GraphicsLayer({ title: "Possible Oil Spills" });
     const migrationLayer = new GraphicsLayer({ title: "Animal Migration Paths" });
     const labelLayer = new GraphicsLayer({ title: "Garbage Patch Labels" });
     const map = new Map({
       basemap: "oceans",
-      layers: [
-        chlorophyllLayer,
-        temperatureLayer,
-        contaminationLayer,
-        oilSpillLayer,
-        migrationLayer,
-        labelLayer
-      ]
+      layers: [contaminationLayer, oilSpillLayer, migrationLayer, labelLayer]
     });
     let active = true;
-
-    addChlorophyllGraphics(chlorophyllLayer);
-    addSeaTemperatureGraphics(temperatureLayer);
-    oceanDataLayersRef.current.chlorophyll = chlorophyllLayer;
-    oceanDataLayersRef.current.temperature = temperatureLayer;
-    setOceanLayerStatus((current) => ({
-      ...current,
-      chlorophyll: "ready",
-      temperature: "ready"
-    }));
 
     const view = new SceneView({
       container: mapRef.current,
@@ -457,7 +291,7 @@ export default function OceanGuardDashboard() {
 
         layer.title = layerConfig.title;
         layer.opacity = layerConfig.opacity;
-        layer.blendMode = "multiply";
+        layer.blendMode = "screen";
         layer.visible = oceanLayerVisibilityRef.current[layerConfig.id];
         oceanDataLayersRef.current[layerConfig.id] = layer;
         map.add(layer, 0);
@@ -654,7 +488,7 @@ export default function OceanGuardDashboard() {
 
         <div className="border-b border-zinc-200 px-6 py-4">
           <p className="text-sm font-medium text-zinc-700">Ocean overlays</p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className="mt-3">
             {OCEAN_DATA_LAYERS.map((layerConfig) => {
               const enabled = oceanLayerVisibility[layerConfig.id];
 
@@ -699,6 +533,31 @@ export default function OceanGuardDashboard() {
                 </p>
               );
             })}
+          </div>
+
+          <div className="mt-5 border-t border-zinc-200 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-700">Oil regions</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Showing {Math.min(oilRegionLimit, oilRegionCount)} of {oilRegionCount}
+                </p>
+              </div>
+              <button
+                className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                type="button"
+                disabled={oilLoading || oilRegionLimit >= oilRegionCount}
+                onClick={() =>
+                  setOilRegionLimit((current) => Math.min(current + 2, oilRegionCount))
+                }
+              >
+                {oilLoading
+                  ? "Loading"
+                  : oilRegionLimit >= oilRegionCount
+                    ? "All loaded"
+                    : "Load more"}
+              </button>
+            </div>
           </div>
         </div>
 
