@@ -19,8 +19,6 @@ const OCEAN_DATA_LAYERS = [
   }
 ];
 
-const MAX_OIL_REGIONS = 6;
-
 function resolveApiBaseUrl() {
   const { hostname, protocol } = window.location;
   const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
@@ -95,9 +93,6 @@ export default function OceanGuardDashboard() {
   const [contamination, setContamination] = useState([]);
   const [migrations, setMigrations] = useState([]);
   const [oilSpills, setOilSpills] = useState([]);
-  const [oilRegionLimit, setOilRegionLimit] = useState(2);
-  const [oilRegionCount, setOilRegionCount] = useState(MAX_OIL_REGIONS);
-  const [oilLoading, setOilLoading] = useState(false);
   const [oceanLayerVisibility, setOceanLayerVisibility] = useState({
     currents: false
   });
@@ -157,9 +152,8 @@ export default function OceanGuardDashboard() {
     let active = true;
 
     async function loadOilSpills() {
-      setOilLoading(true);
       try {
-        const response = await fetch(`${apiBaseUrl}/api/oil-spills?limit=${oilRegionLimit}`);
+        const response = await fetch(`${apiBaseUrl}/api/oil-spills`);
 
         if (!response.ok) {
           throw new Error(`Oil spill API returned ${response.status}`);
@@ -169,14 +163,9 @@ export default function OceanGuardDashboard() {
 
         if (active) {
           setOilSpills(geoJson.features || []);
-          setOilRegionCount(geoJson.properties?.regionCount || MAX_OIL_REGIONS);
         }
       } catch (requestError) {
         console.warn("Oil spill overlay unavailable:", requestError.message);
-      } finally {
-        if (active) {
-          setOilLoading(false);
-        }
       }
     }
 
@@ -185,7 +174,7 @@ export default function OceanGuardDashboard() {
     return () => {
       active = false;
     };
-  }, [oilRegionLimit]);
+  }, []);
 
   const alerts = useMemo(
     () => findIntersections(contamination, migrations),
@@ -533,31 +522,6 @@ export default function OceanGuardDashboard() {
                 </p>
               );
             })}
-          </div>
-
-          <div className="mt-5 border-t border-zinc-200 pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-zinc-700">Oil regions</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Showing {Math.min(oilRegionLimit, oilRegionCount)} of {oilRegionCount}
-                </p>
-              </div>
-              <button
-                className="rounded-md border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
-                type="button"
-                disabled={oilLoading || oilRegionLimit >= oilRegionCount}
-                onClick={() =>
-                  setOilRegionLimit((current) => Math.min(current + 2, oilRegionCount))
-                }
-              >
-                {oilLoading
-                  ? "Loading"
-                  : oilRegionLimit >= oilRegionCount
-                    ? "All loaded"
-                    : "Load more"}
-              </button>
-            </div>
           </div>
         </div>
 

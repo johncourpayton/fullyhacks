@@ -70,14 +70,14 @@ app.get("/api/migration", async (_req, res, next) => {
 app.get("/api/oil-spills", async (req, res, next) => {
   try {
     const hoursBack = Number(req.query.hoursBack || 48);
-    const limit = Number(req.query.limit || 2);
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
 
     if (!Number.isFinite(hoursBack) || hoursBack <= 0 || hoursBack > 168) {
       res.status(400).json({ error: "hoursBack must be a number between 1 and 168" });
       return;
     }
 
-    if (!Number.isFinite(limit) || limit <= 0) {
+    if (limit !== undefined && (!Number.isFinite(limit) || limit <= 0)) {
       res.status(400).json({ error: "limit must be a positive number" });
       return;
     }
