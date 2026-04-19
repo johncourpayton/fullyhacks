@@ -73,8 +73,10 @@ export default function OceanGuardDashboard() {
   const contaminationLayerRef = useRef(null);
   const migrationLayerRef = useRef(null);
   const labelLayerRef = useRef(null);
+  const oilSpillLayerRef = useRef(null);
   const [contamination, setContamination] = useState([]);
   const [migrations, setMigrations] = useState([]);
+  const [oilSpills, setOilSpills] = useState([]);
   const [selectedPocketId, setSelectedPocketId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -120,6 +122,34 @@ export default function OceanGuardDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadOilSpills() {
+      try {
+        const response = await fetch(`${apiBaseUrl}/api/oil-spills`);
+
+        if (!response.ok) {
+          throw new Error(`Oil spill API returned ${response.status}`);
+        }
+
+        const geoJson = await response.json();
+
+        if (active) {
+          setOilSpills(geoJson.features || []);
+        }
+      } catch (requestError) {
+        console.warn("Oil spill overlay unavailable:", requestError.message);
+      }
+    }
+
+    loadOilSpills();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const alerts = useMemo(
     () => findIntersections(contamination, migrations),
     [contamination, migrations]
@@ -135,11 +165,12 @@ export default function OceanGuardDashboard() {
     }
 
     const contaminationLayer = new GraphicsLayer({ title: "Contamination Pockets" });
+    const oilSpillLayer = new GraphicsLayer({ title: "Possible Oil Spills" });
     const migrationLayer = new GraphicsLayer({ title: "Animal Migration Paths" });
     const labelLayer = new GraphicsLayer({ title: "Garbage Patch Labels" });
     const map = new Map({
       basemap: "oceans",
-      layers: [contaminationLayer, migrationLayer, labelLayer]
+      layers: [contaminationLayer, oilSpillLayer, migrationLayer, labelLayer]
     });
 
     const view = new SceneView({
@@ -199,6 +230,7 @@ export default function OceanGuardDashboard() {
 
     viewRef.current = view;
     contaminationLayerRef.current = contaminationLayer;
+    oilSpillLayerRef.current = oilSpillLayer;
     migrationLayerRef.current = migrationLayer;
     labelLayerRef.current = labelLayer;
 
@@ -207,6 +239,7 @@ export default function OceanGuardDashboard() {
       view.destroy();
       viewRef.current = null;
       contaminationLayerRef.current = null;
+      oilSpillLayerRef.current = null;
       migrationLayerRef.current = null;
       labelLayerRef.current = null;
     };
@@ -214,14 +247,16 @@ export default function OceanGuardDashboard() {
 
   useEffect(() => {
     const contaminationLayer = contaminationLayerRef.current;
+    const oilSpillLayer = oilSpillLayerRef.current;
     const migrationLayer = migrationLayerRef.current;
     const labelLayer = labelLayerRef.current;
 
-    if (!contaminationLayer || !migrationLayer || !labelLayer) {
+    if (!contaminationLayer || !oilSpillLayer || !migrationLayer || !labelLayer) {
       return;
     }
 
     contaminationLayer.removeAll();
+    oilSpillLayer.removeAll();
     migrationLayer.removeAll();
     labelLayer.removeAll();
 
@@ -303,7 +338,28 @@ export default function OceanGuardDashboard() {
         })
       );
     });
-  }, [contamination, migrations, selectedPocketId]);
+
+    oilSpills.forEach((feature, index) => {
+      oilSpillLayer.add(
+        new Graphic({
+          geometry: polygonFromGeoJson(feature.geometry),
+          attributes: {
+            id: `oil-spill-${index}`,
+            ...feature.properties,
+            layerType: "oil-spill"
+          },
+          symbol: {
+            type: "simple-fill",
+            color: [220, 38, 38, 0.45],
+            outline: {
+              color: [127, 29, 29, 0.9],
+              width: 1.5
+            }
+          }
+        })
+      );
+    });
+  }, [contamination, migrations, oilSpills, selectedPocketId]);
 
   return (
     <main className="flex h-screen bg-zinc-50 text-zinc-950">
