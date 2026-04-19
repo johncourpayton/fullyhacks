@@ -146,8 +146,10 @@ export default function OceanGuardDashboard() {
   const viewRef = useRef(null);
   const chlorophyllLayerRef = useRef(null);
   const garbagePatchLayerRef = useRef(null);
+  const shipTrafficLayerRef = useRef(null);
   const [chlorophyllVisible, setChlorophyllVisible] = useState(true);
   const [garbagePatchesVisible, setGarbagePatchesVisible] = useState(false);
+  const [shipTrafficVisible, setShipTrafficVisible] = useState(false);
 
   useEffect(() => {
     if (!mapRef.current || viewRef.current) {
@@ -234,9 +236,93 @@ export default function OceanGuardDashboard() {
     });
     garbagePatchLayerRef.current = garbagePatchLayer;
 
+    const shipTrafficLayer = new GeoJSONLayer({
+      url: "/api/ships?minLat=25&maxLat=50&minLon=-130&maxLon=-105",
+      title: "MarineTraffic Ship Traffic",
+      visible: false,
+      outFields: ["*"],
+      renderer: {
+        type: "unique-value",
+        field: "vesselTypeGroup",
+        defaultSymbol: {
+          type: "simple-marker",
+          color: [103, 116, 142, 0.92],
+          outline: {
+            color: [255, 255, 255, 0.95],
+            width: 0.8
+          },
+          size: 6
+        },
+        uniqueValueInfos: [
+          {
+            value: "Tanker",
+            label: "Tankers",
+            symbol: {
+              type: "simple-marker",
+              color: [220, 38, 38, 0.95],
+              outline: {
+                color: [255, 255, 255, 0.95],
+                width: 0.8
+              },
+              size: 7
+            }
+          },
+          {
+            value: "Cargo",
+            label: "Cargo",
+            symbol: {
+              type: "simple-marker",
+              color: [37, 99, 235, 0.95],
+              outline: {
+                color: [255, 255, 255, 0.95],
+                width: 0.8
+              },
+              size: 7
+            }
+          },
+          {
+            value: "Other",
+            label: "Other vessels",
+            symbol: {
+              type: "simple-marker",
+              color: [82, 82, 91, 0.92],
+              outline: {
+                color: [255, 255, 255, 0.95],
+                width: 0.8
+              },
+              size: 6
+            }
+          }
+        ]
+      },
+      popupTemplate: {
+        title: "{name}",
+        content: [
+          {
+            type: "fields",
+            fieldInfos: [
+              {
+                fieldName: "vesselType",
+                label: "Ship type"
+              },
+              {
+                fieldName: "mmsi",
+                label: "MMSI"
+              },
+              {
+                fieldName: "timestamp",
+                label: "Last update"
+              }
+            ]
+          }
+        ]
+      }
+    });
+    shipTrafficLayerRef.current = shipTrafficLayer;
+
     const map = new Map({
       basemap: "oceans",
-      layers: [chlorophyllLayer, garbagePatchLayer]
+      layers: [chlorophyllLayer, garbagePatchLayer, shipTrafficLayer]
     });
 
     const view = new SceneView({
@@ -276,6 +362,7 @@ export default function OceanGuardDashboard() {
       viewRef.current = null;
       chlorophyllLayerRef.current = null;
       garbagePatchLayerRef.current = null;
+      shipTrafficLayerRef.current = null;
       URL.revokeObjectURL(garbagePatchUrl);
     };
   }, []);
@@ -295,6 +382,15 @@ export default function OceanGuardDashboard() {
 
     if (garbagePatchLayerRef.current) {
       garbagePatchLayerRef.current.visible = nextVisible;
+    }
+  };
+
+  const toggleShipTraffic = () => {
+    const nextVisible = !shipTrafficVisible;
+    setShipTrafficVisible(nextVisible);
+
+    if (shipTrafficLayerRef.current) {
+      shipTrafficLayerRef.current.visible = nextVisible;
     }
   };
 
@@ -339,6 +435,17 @@ export default function OceanGuardDashboard() {
           >
             Toggle Garbage Patches
           </button>
+          <button
+            type="button"
+            onClick={toggleShipTraffic}
+            className={`mt-3 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
+              shipTrafficVisible
+                ? "border-sky-700 bg-sky-700 text-white"
+                : "border-zinc-300 bg-white text-zinc-700"
+            }`}
+          >
+            Toggle Ship Traffic
+          </button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
@@ -349,6 +456,10 @@ export default function OceanGuardDashboard() {
           <p className="mt-4 text-sm leading-6 text-zinc-600">
             Garbage patch regions are approximate gyre-scale polygons for visual
             planning and demo use.
+          </p>
+          <p className="mt-4 text-sm leading-6 text-zinc-600">
+            Ship traffic is loaded from the MarineTraffic Flask endpoint for the
+            current demo bounding box.
           </p>
         </div>
       </aside>
