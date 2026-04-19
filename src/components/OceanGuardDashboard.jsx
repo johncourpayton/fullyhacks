@@ -8,11 +8,15 @@ import Map from "@arcgis/core/Map.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
 
 function resolveApiBaseUrl() {
-  if (import.meta.env.VITE_API_BASE_URL) {
-    return import.meta.env.VITE_API_BASE_URL;
-  }
-
   const { hostname, protocol } = window.location;
+  const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  const isGitHubPreviewHost =
+    hostname.includes("-5173.app.github.dev") ||
+    hostname.includes("-5173.githubpreview.dev");
+
+  if (configuredApiBaseUrl && !(isGitHubPreviewHost && configuredApiBaseUrl.includes("localhost"))) {
+    return configuredApiBaseUrl;
+  }
 
   if (hostname.includes("-5173.app.github.dev")) {
     return `${protocol}//${hostname.replace("-5173.app.github.dev", "-4000.app.github.dev")}`;
