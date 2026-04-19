@@ -1,87 +1,116 @@
 import * as turf from "@turf/turf";
 
 /**
- * Analyzes the impact of contamination zones on migration paths.
- * @param {Object} whaleGeoJson - FeatureCollection of migration paths (LineStrings)
- * @param {Object} contaminationGeoJson - FeatureCollection of contamination zones (Polygons)
- * @returns {Object} Analysis results including intersections and metrics.
+ * Analyzes the impact of contamination and shipping traffic on a specific migration path.
+ * @param {Object} whaleFeature - A single GeoJSON Feature (LineString)
+ * @param {Object} garbageGeoJson - FeatureCollection of garbage patches
+ * @param {Object} shipsGeoJson - FeatureCollection of shipping lanes
+ * @returns {Object} Deep analysis results.
  */
-export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
-  if (!whaleGeoJson || !contaminationGeoJson) return null;
+export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJson) {
+  if (!whaleFeature) return null;
 
-  const results = [];
-  let totalIntersections = 0;
-  let totalLengthInRiskZone = 0;
+  const whaleName = whaleFeature.properties.name || whaleFeature.properties.whale_id || "Pod 101";
+  
+  const contaminationRisks = [];
+  const shippingRisks = [];
 
-  whaleGeoJson.features.forEach((whaleFeature) => {
-    const whalePath = whaleFeature.geometry;
-    const whaleName = whaleFeature.properties.name || whaleFeature.properties.id || "Unknown Whale";
-    
-    let pathRiskLength = 0;
-    const intersections = [];
-
-    contaminationGeoJson.features.forEach((zoneFeature) => {
-      const zone = zoneFeature.geometry;
-      const zoneName = zoneFeature.properties.name || "Contamination Zone";
-
-      // Find intersection points
-      const intersectPoints = turf.lineIntersect(whaleFeature, zoneFeature);
-      if (intersectPoints.features.length > 0) {
-        totalIntersections += intersectPoints.features.length;
-        intersections.push({
-          zoneName,
-          pointCount: intersectPoints.features.length
+  // 1. Analyze Contamination Intersections
+  if (garbageGeoJson) {
+    garbageGeoJson.features.forEach((zone) => {
+      const intersect = turf.lineIntersect(whaleFeature, zone);
+      if (intersect.features.length > 0) {
+        contaminationRisks.push({
+          zone: zone.properties.name,
+          intersections: intersect.features.length,
+          severity: zone.properties.ocean === "Southern Ocean" ? "Critical" : "High"
         });
-
-        // Calculate length within polygon (rough approximation using lineChunk or booleanWithin)
-        // For simplicity in a hackathon, we'll mark it as "At Risk" if there's any intersection
       }
     });
+  }
 
-    results.push({
-      whaleName,
-      intersections,
-      status: intersections.length > 0 ? "High Risk" : "Low Risk"
+  // 2. Analyze Shipping Lane Proximity/Intersection
+  if (shipsGeoJson) {
+    shipsGeoJson.features.forEach((lane) => {
+      // For shipping lanes (LineStrings), we check for proximity or cross-points
+      const intersect = turf.lineIntersect(whaleFeature, lane);
+      if (intersect.features.length > 0) {
+        shippingRisks.push({
+          lane: lane.properties.name,
+          traffic: lane.properties.traffic_density,
+          points: intersect.features.length
+        });
+      }
     });
-  });
+  }
 
   return {
-    summary: results,
-    totalIntersections,
-    metrics: {
-      timestamp: new Date().toISOString()
-    }
+    whaleName,
+    contaminationRisks,
+    shippingRisks,
+    overallRiskScore: (contaminationRisks.length * 2) + shippingRisks.length,
+    timestamp: new Date().toLocaleString()
   };
 }
 
 /**
- * Mock function to "generate" an AI report. 
- * In a real app, this would send the analysis results to an LLM.
+ * AI Agent prompt generator and report formatter.
  */
-export function generateMockAIReport(analysis) {
-  if (!analysis) return "No data available to analyze.";
+export function generateAgenticReport(analysis) {
+  if (!analysis) return "Agent offline: No data provided.";
 
-  const { summary, totalIntersections } = analysis;
+  const { whaleName, contaminationRisks, shippingRisks, overallRiskScore } = analysis;
   
-  let report = "## 🐋 AI Impact Report: Whale Migration & Ocean Contamination\n\n";
+  let report = `## 🤖 AI Agent: Impact Assessment for ${whaleName}\n\n`;
   
-  if (totalIntersections === 0) {
-    report += "✅ **Good news!** Current data shows no direct intersections between monitored whale migration paths and major garbage patches.\n\n";
-    report += "The marine wildlife seems to be navigating clear of the highest density contamination zones for now.";
+  if (overallRiskScore > 5) {
+    report += `🔴 **CRITICAL ALERT**: This pod is currently on a high-risk trajectory.\n\n`;
+  } else if (overallRiskScore > 0) {
+    report += `🟡 **CAUTION**: Potential ecosystem stressors detected.\n\n`;
   } else {
-    report += `⚠️ **Warning:** Analysis detected **${totalIntersections} points of intersection** where whale migration paths cross known garbage patches.\n\n`;
-    
-    summary.forEach(item => {
-      if (item.intersections.length > 0) {
-        report += `- **${item.whaleName}**: Crossing through ${item.intersections.map(i => i.zoneName).join(", ")}. This path is classified as **${item.status}**.\n`;
-      }
+    report += `🟢 **MONITORING**: No immediate threats detected for this pod.\n\n`;
+  }
+
+  if (contaminationRisks.length > 0) {
+    report += `### ☢️ Contamination Exposure\n`;
+    contaminationRisks.forEach(r => {
+      report += `- **${r.zone}**: Detected **${r.intersections}** intersection points. Threat Level: \`${r.severity}\`.\n`;
     });
-    
-    report += "\n### Recommended Actions:\n";
-    report += "1. **Increased Monitoring**: Deploy drones to the identified intersection coordinates.\n";
-    report += "2. **Clean-up Prioritization**: Focus marine waste collection efforts in zones with high migration traffic.\n";
-    report += "3. **Navigation Alerts**: Alert nearby research vessels to track for signs of distress in these areas.";
+  }
+
+  if (shippingRisks.length > 0) {
+    report += `\n### 🚢 Maritime Traffic Conflict\n`;
+    shippingRisks.forEach(r => {
+      report += `- **${r.lane}**: Path crosses this **${r.traffic}** traffic lane **${r.points}** times. Risk of acoustic disturbance or collision is elevated.\n`;
+    });
+  }
+
+  report += `\n### 🧠 Agent Recommendation\n`;
+  if (overallRiskScore > 5) {
+    report += "The AI Agent recommends immediate rerouting of maritime traffic or deployment of a cleanup vessel to the intersection coordinates to mitigate acute exposure.";
+  } else if (overallRiskScore > 0) {
+    report += "Continued observation is advised. Acoustic sensors should be deployed to monitor stress levels as the pod enters shipping corridors.";
+  } else {
+    report += "Optimal path detected. Maintain current monitoring frequency.";
   }
 
   return report;
+}
+
+// Keep the old functions for compatibility
+export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
+    // Basic wrapper for the old dashboard button
+    if (!whaleGeoJson?.features?.[0]) return null;
+    return {
+        summary: [{
+            whaleName: "Global Fleet",
+            intersections: [],
+            status: "Monitoring"
+        }],
+        totalIntersections: 0
+    };
+}
+
+export function generateMockAIReport() {
+    return "Please click on a specific whale path to generate a deep-dive AI Impact Report.";
 }

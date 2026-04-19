@@ -243,6 +243,7 @@ export default function OceanGuardDashboard() {
   const [impactReport, setImpactReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [whaleData, setWhaleData] = useState(null);
+  const [shippingData, setShippingData] = useState(null);
 
   useEffect(() => {
     if (!mapRef.current || viewRef.current) {
@@ -448,6 +449,16 @@ export default function OceanGuardDashboard() {
       }
     });
 
+    view.on("click", async (event) => {
+      const response = await view.hitTest(event);
+      const results = response.results.filter(r => r.graphic?.layer?.title?.includes("Whale") || r.graphic?.layer?.title?.includes("Uploaded"));
+      
+      if (results.length > 0) {
+        const graphic = results[0].graphic;
+        handleAnalyzeSpecificPath(graphic.geometry.toJSON());
+      }
+    });
+
     viewRef.current = view;
 
     createDataGeoJsonLayers(map);
@@ -481,6 +492,35 @@ export default function OceanGuardDashboard() {
       const data = await res.json();
       setWhaleData(data);
     }
+
+    const shipFile = dataGeoJsonFiles.find(f => f.url.includes("shipping_lanes"));
+    if (shipFile) {
+      const res = await fetch(shipFile.url);
+      const data = await res.json();
+      setShippingData(data);
+    }
+  };
+
+  const handleAnalyzeSpecificPath = (geometry) => {
+    setIsAnalyzing(true);
+    setImpactReport("AI Agent is calculating intersections with Shipping Lanes and Contamination zones...");
+    
+    setTimeout(() => {
+      // Convert ArcGIS geometry to GeoJSON Feature for Turf
+      const whaleFeature = {
+        type: "Feature",
+        geometry: {
+          type: "LineString",
+          coordinates: geometry.paths[0]
+        },
+        properties: { name: "Selected Whale Pod" }
+      };
+
+      const analysis = analyzeSpecificPodImpact(whaleFeature, GARBAGE_PATCHES_GEOJSON, shippingData);
+      const report = generateAgenticReport(analysis);
+      setImpactReport(report);
+      setIsAnalyzing(false);
+    }, 1200);
   };
 
   const handleGenerateReport = async () => {
@@ -721,7 +761,7 @@ export default function OceanGuardDashboard() {
                 : "border-teal-700 bg-white text-teal-700 hover:bg-teal-50"
             }`}
           >
-            {isAnalyzing ? "Analyzing Ecosystem..." : "Generate AI Impact Report"}
+            {isAnalyzing ? "Analyzing Ecosystem..." : "Agent Mode: Click a Whale Path"}
           </button>
 
           {impactReport && (

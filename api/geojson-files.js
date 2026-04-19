@@ -9,6 +9,10 @@ export default function handler(req, res) {
     {
       url: "/data/AustralianHumpBack.geojson",
       title: "Australian HumpBack"
+    },
+    {
+      url: "/data/shipping_lanes.geojson",
+      title: "Global Shipping Lanes"
     }
   ];
 

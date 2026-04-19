@@ -1,0 +1,45 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Trans-Pacific Route", "traffic_density": "High" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [140, 35], [160, 38], [180, 40], [-160, 38], [-140, 35], [-122, 37]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "North Atlantic Lane", "traffic_density": "Very High" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-74, 40], [-60, 45], [-40, 50], [-20, 50], [0, 48], [5, 51]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Southern Whale Sanctuary Lane", "traffic_density": "Medium" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [150, -40], [160, -50], [170, -60], [180, -65], [-170, -65], [-160, -60]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "name": "Indian Ocean Passage", "traffic_density": "High" },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [45, 12], [60, 15], [80, 10], [100, 5], [115, -10]
+        ]
+      }
+    }
+  ]
+}
