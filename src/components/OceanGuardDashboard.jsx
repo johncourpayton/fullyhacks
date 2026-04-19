@@ -5,6 +5,10 @@ import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
 
 const NASA_GIBS_CHLOROPHYLL_LAYER = "VIIRS_NOAA20_Chlorophyll_a_v2022.0_NRT";
+const DATA_GEOJSON_FILES = [
+  { url: "/data/whales.geojson", title: "Whale Migration Paths" },
+  { url: "/data/AustralianHumpBack.geojson", title: "Australian Humpback Migration" }
+];
 const GARBAGE_PATCHES_GEOJSON = {
   type: "FeatureCollection",
   features: [
@@ -141,15 +145,74 @@ function getGibsDate(daysBack = 2) {
   return date.toISOString().slice(0, 10);
 }
 
+function getFirstGeometryType(geojson) {
+  const firstFeature = geojson?.features?.find((feature) => feature.geometry);
+  return firstFeature?.geometry?.type || "LineString";
+}
+
+function getGeoJsonRenderer(geometryType) {
+  if (geometryType.includes("Point")) {
+    return {
+      type: "simple",
+      symbol: {
+        type: "simple-marker",
+        color: [37, 99, 235, 0.9],
+        outline: {
+          color: [255, 255, 255, 0.95],
+          width: 0.8
+        },
+        size: 6
+      }
+    };
+  }
+
+  if (geometryType.includes("Polygon")) {
+    return {
+      type: "simple",
+      symbol: {
+        type: "simple-fill",
+        color: [37, 99, 235, 0.22],
+        outline: {
+          color: [37, 99, 235, 0.9],
+          width: 1.2
+        }
+      }
+    };
+  }
+
+  return {
+    type: "simple",
+    symbol: {
+      type: "simple-line",
+      color: [37, 99, 235, 0.95],
+      width: 3
+    }
+  };
+}
+
+async function createDataGeoJsonLayer({ url, title }) {
+  const response = await fetch(url);
+  const geojson = await response.json();
+
+  return new GeoJSONLayer({
+    url,
+    title,
+    renderer: getGeoJsonRenderer(getFirstGeometryType(geojson))
+  });
+}
+
 export default function OceanGuardDashboard() {
   const mapRef = useRef(null);
   const viewRef = useRef(null);
   const chlorophyllLayerRef = useRef(null);
   const garbagePatchLayerRef = useRef(null);
   const shipTrafficLayerRef = useRef(null);
+  const dataGeoJsonLayersRef = useRef([]);
+  const dataGeoJsonVisibleRef = useRef(true);
   const [chlorophyllVisible, setChlorophyllVisible] = useState(true);
   const [garbagePatchesVisible, setGarbagePatchesVisible] = useState(false);
   const [shipTrafficVisible, setShipTrafficVisible] = useState(false);
+  const [dataGeoJsonVisible, setDataGeoJsonVisible] = useState(true);
 
   useEffect(() => {
     if (!mapRef.current || viewRef.current) {
@@ -320,22 +383,9 @@ export default function OceanGuardDashboard() {
     });
     shipTrafficLayerRef.current = shipTrafficLayer;
 
-    const whaleLayer = new GeoJSONLayer({
-      url: "/data/whales.geojson",
-      title: "Whale Migration Paths",
-      renderer: {
-        type: "simple",
-        symbol: {
-          type: "simple-line",
-          color: [37, 99, 235, 0.95],
-          width: 3
-        }
-      }
-    });
-
     const map = new Map({
       basemap: "oceans",
-      layers: [chlorophyllLayer, garbagePatchLayer, shipTrafficLayer, whaleLayer]
+      layers: [chlorophyllLayer, garbagePatchLayer, shipTrafficLayer]
     });
 
     const view = new SceneView({
@@ -370,15 +420,29 @@ export default function OceanGuardDashboard() {
 
     viewRef.current = view;
 
+    createDataGeoJsonLayers(map);
+
     return () => {
       view.destroy();
       viewRef.current = null;
       chlorophyllLayerRef.current = null;
       garbagePatchLayerRef.current = null;
       shipTrafficLayerRef.current = null;
+      dataGeoJsonLayersRef.current = [];
       URL.revokeObjectURL(garbagePatchUrl);
     };
   }, []);
+
+  const createDataGeoJsonLayers = async (map) => {
+    const dataGeoJsonLayers = await Promise.all(DATA_GEOJSON_FILES.map(createDataGeoJsonLayer));
+
+    dataGeoJsonLayers.forEach((layer) => {
+      layer.visible = dataGeoJsonVisibleRef.current;
+    });
+
+    dataGeoJsonLayersRef.current = dataGeoJsonLayers;
+    map.addMany(dataGeoJsonLayers);
+  };
 
   const toggleChlorophyll = () => {
     const nextVisible = !chlorophyllVisible;
@@ -405,6 +469,16 @@ export default function OceanGuardDashboard() {
     if (shipTrafficLayerRef.current) {
       shipTrafficLayerRef.current.visible = nextVisible;
     }
+  };
+
+  const toggleDataGeoJsonLayers = () => {
+    const nextVisible = !dataGeoJsonVisible;
+    setDataGeoJsonVisible(nextVisible);
+    dataGeoJsonVisibleRef.current = nextVisible;
+
+    dataGeoJsonLayersRef.current.forEach((layer) => {
+      layer.visible = nextVisible;
+    });
   };
 
   return (
@@ -458,6 +532,17 @@ export default function OceanGuardDashboard() {
             }`}
           >
             Toggle Ship Traffic
+          </button>
+          <button
+            type="button"
+            onClick={toggleDataGeoJsonLayers}
+            className={`mt-3 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
+              dataGeoJsonVisible
+                ? "border-blue-700 bg-blue-700 text-white"
+                : "border-zinc-300 bg-white text-zinc-700"
+            }`}
+          >
+            Toggle GeoJSON Layers
           </button>
         </div>
 
