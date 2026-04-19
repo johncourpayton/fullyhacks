@@ -529,15 +529,37 @@ export default function OceanGuardDashboard() {
 
         console.log(`Smart Upload: Using '${latHeader}' and '${lonHeader}'. Found ${data.length} valid points.`);
 
-        if (data.length === 0) {
-          alert("No valid coordinate data found in those columns.");
+        const coordinates = [];
+        let lastCoord = null;
+
+        data.forEach(row => {
+          const lat = parseFloat(row[latHeader]);
+          const lon = parseFloat(row[lonHeader]);
+          
+          if (lastCoord) {
+            // Basic distance check (Euclidean approx for speed in browser)
+            const dx = lon - lastCoord[0];
+            const dy = lat - lastCoord[1];
+            const distSq = dx*dx + dy*dy;
+            
+            // Skip if too close (roughly 2km at equator approx)
+            if (distSq < 0.0004) return; 
+            
+            // Break if too far (roughly 500km approx)
+            if (distSq > 25) {
+              // For a simple hackathon upload, we just start a new segment or keep the jump
+              // but we'll allow it for now to avoid complex multi-line features in the quick upload
+            }
+          }
+
+          coordinates.append([lon, lat]);
+          lastCoord = [lon, lat];
+        });
+
+        if (coordinates.length < 2) {
+          alert("Not enough unique movement points found to generate a path.");
           return;
         }
-
-        const coordinates = data.map(row => [
-          parseFloat(row[lonHeader]), 
-          parseFloat(row[latHeader])
-        ]);
 
         const geojson = {
           type: "FeatureCollection",
@@ -546,7 +568,8 @@ export default function OceanGuardDashboard() {
               type: "Feature",
               properties: { 
                 name: file.name.replace(".csv", ""),
-                id: "uploaded-migration"
+                id: "uploaded-migration",
+                pointCount: coordinates.length
               },
               geometry: {
                 type: "LineString",
