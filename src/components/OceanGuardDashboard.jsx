@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Map from "@arcgis/core/Map.js";
 import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
@@ -15,6 +15,8 @@ function getGibsDate(daysBack = 2) {
 export default function OceanGuardDashboard() {
   const mapRef = useRef(null);
   const viewRef = useRef(null);
+  const chlorophyllLayerRef = useRef(null);
+  const [chlorophyllVisible, setChlorophyllVisible] = useState(true);
 
   useEffect(() => {
     if (!mapRef.current || viewRef.current) {
@@ -27,10 +29,11 @@ export default function OceanGuardDashboard() {
         `https://gibs-a.earthdata.nasa.gov/wmts/epsg3857/all/${NASA_GIBS_CHLOROPHYLL_LAYER}` +
         `/default/${chlorophyllDate}/GoogleMapsCompatible_Level7/{level}/{row}/{col}.png`,
       title: `NASA GIBS Chlorophyll-a (${chlorophyllDate})`,
-      opacity: 0.82,
+      opacity: 0.42,
       visible: true,
       copyright: "NASA GIBS / OB.DAAC"
     });
+    chlorophyllLayerRef.current = chlorophyllLayer;
 
     const map = new Map({
       basemap: "oceans",
@@ -72,8 +75,18 @@ export default function OceanGuardDashboard() {
     return () => {
       view.destroy();
       viewRef.current = null;
+      chlorophyllLayerRef.current = null;
     };
   }, []);
+
+  const toggleChlorophyll = () => {
+    const nextVisible = !chlorophyllVisible;
+    setChlorophyllVisible(nextVisible);
+
+    if (chlorophyllLayerRef.current) {
+      chlorophyllLayerRef.current.visible = nextVisible;
+    }
+  };
 
   return (
     <main className="flex h-screen bg-zinc-50 text-zinc-950">
@@ -92,9 +105,25 @@ export default function OceanGuardDashboard() {
           <span className="text-sm font-medium text-zinc-700">Globe view ready</span>
         </div>
 
+        <div className="border-b border-zinc-200 p-6">
+          <h2 className="text-sm font-semibold text-zinc-800">Ocean layers</h2>
+          <button
+            type="button"
+            onClick={toggleChlorophyll}
+            className={`mt-4 w-full rounded-md border px-4 py-3 text-sm font-semibold transition ${
+              chlorophyllVisible
+                ? "border-teal-700 bg-teal-700 text-white"
+                : "border-zinc-300 bg-white text-zinc-700"
+            }`}
+          >
+            Chlorophyll {chlorophyllVisible ? "On" : "Off"}
+          </button>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <p className="text-sm leading-6 text-zinc-600">
-            Add the next OceanGuard layer here.
+            Global chlorophyll-a from NASA GIBS is shown as a transparent satellite
+            overlay.
           </p>
         </div>
       </aside>
