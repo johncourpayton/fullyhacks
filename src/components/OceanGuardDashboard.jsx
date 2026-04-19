@@ -23,7 +23,7 @@ function getWhaleSymbol(color = [0, 240, 255]) {
   return {
     type: "simple-line",
     color: [...color, 0.9],
-    width: 4,
+    width: 3,
     cap: "round",
     join: "round"
   };
@@ -244,16 +244,10 @@ export default function OceanGuardDashboard() {
             Papa.parse(file, { header: true, dynamicTyping: true, complete: (res) => {
               try {
                 const headers = Object.keys(res.data[0]);
-                const latH = headers.find(k => k.toLowerCase().includes("lat"));
-                const lonH = headers.find(k => k.toLowerCase().includes("lon"));
-                const timeH = headers.find(k => k.toLowerCase().includes("time"));
-                const candidateIndividualH = headers.find(k => {
-                  const lower = k.toLowerCase();
-                  return lower.includes("individual") || lower.includes("id");
-                });
-                const individualH = candidateIndividualH && new Set(res.data.map(row => row[candidateIndividualH]).filter(Boolean)).size < res.data.filter(row => row[candidateIndividualH]).length
-                  ? candidateIndividualH
-                  : null;
+                const latH = headers.find(k => k === "location-lat") || headers.find(k => k.toLowerCase().includes("lat"));
+                const lonH = headers.find(k => k === "location-long") || headers.find(k => k.toLowerCase().includes("lon"));
+                const timeH = headers.find(k => k === "timestamp") || headers.find(k => k.toLowerCase().includes("time"));
+                const individualH = headers.find(k => k === "individual-local-identifier") || headers.find(k => k.toLowerCase().includes("individual")) || headers.find(k => k.toLowerCase().includes("id"));
                 
                 const formatWhaleName = (name) => {
                   return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
@@ -289,57 +283,61 @@ export default function OceanGuardDashboard() {
                   const sortedRows = timeH
                     ? [...rows].sort((a, b) => new Date(a[timeH]) - new Date(b[timeH]))
                     : rows;
-                  const segments = [];
-                  let currentSegment = [];
-                  let lastTime = null;
+                  const features = [];
+                  let coords = [];
+                  let lastPoint = null;
+                  let segmentIndex = 1;
 
                   sortedRows.forEach((row) => {
                     const longitude = parseFloat(row[lonH]);
                     const latitude = parseFloat(row[latH]);
-                    const currentTime = timeH ? new Date(row[timeH]) : null;
 
                     if (Number.isNaN(longitude) || Number.isNaN(latitude)) {
                       return;
                     }
 
-                    const point = [longitude, latitude];
-                    const previousPoint = currentSegment[currentSegment.length - 1];
+                    const currentPoint = [longitude, latitude];
 
-                    if (previousPoint) {
-                      const distanceKm = haversineDistance(previousPoint, point);
-                      const timeDiff = lastTime && currentTime
-                        ? currentTime - lastTime
-                        : 0;
-
-                      if (
-                        (distanceKm > 800 && timeDiff > 1000 * 60 * 60 * 48) ||
-                        distanceKm > 2000
-                      ) {
-                        if (currentSegment.length > 1) {
-                          segments.push(currentSegment);
+                    if (lastPoint) {
+                      const distanceKm = haversineDistance(lastPoint, currentPoint);
+                      if (distanceKm > 300) {
+                        if (coords.length > 1) {
+                          features.push({
+                            type: "Feature",
+                            geometry: { type: "LineString", coordinates: coords },
+                            properties: {
+                              name: species,
+                              file_source: file.name,
+                              whale_id: individual,
+                              individual,
+                              segment_index: segmentIndex
+                            }
+                          });
+                          segmentIndex += 1;
                         }
-                        currentSegment = [];
+                        coords = [];
                       }
                     }
 
-                    currentSegment.push(point);
-                    lastTime = currentTime;
+                    coords.push(currentPoint);
+                    lastPoint = currentPoint;
                   });
 
-                  if (currentSegment.length > 1) {
-                    segments.push(currentSegment);
+                  if (coords.length > 1) {
+                    features.push({
+                      type: "Feature",
+                      geometry: { type: "LineString", coordinates: coords },
+                      properties: {
+                        name: species,
+                        file_source: file.name,
+                        whale_id: individual,
+                        individual,
+                        segment_index: segmentIndex
+                      }
+                    });
                   }
 
-                  return segments.map((segment, index) => ({
-                    type: "Feature",
-                    geometry: { type: "LineString", coordinates: segment },
-                    properties: {
-                      name: species,
-                      file_source: file.name,
-                      individual,
-                      segment_index: index + 1
-                    }
-                  }));
+                  return features;
                 });
                 const features = createFeaturesFromGroups(groupedRows);
 
@@ -351,7 +349,7 @@ export default function OceanGuardDashboard() {
                 const layer = new GeoJSONLayer({ 
                   url: URL.createObjectURL(new Blob([JSON.stringify(geojson)], { type: "application/geo+json" })), 
                   title: `Uploaded: ${file.name}`, 
-                  renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) } 
+                  renderer: { type: "simple", symbol: getWhaleSymbol([37, 99, 235]) }
                 });
                 viewRef.current.map.add(layer);
                 layer.when(() => {
