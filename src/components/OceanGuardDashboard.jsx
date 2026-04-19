@@ -7,7 +7,25 @@ import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer.js";
 import Map from "@arcgis/core/Map.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:4000";
+function resolveApiBaseUrl() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+
+  const { hostname, protocol } = window.location;
+
+  if (hostname.includes("-5173.app.github.dev")) {
+    return `${protocol}//${hostname.replace("-5173.app.github.dev", "-4000.app.github.dev")}`;
+  }
+
+  if (hostname.includes("-5173.githubpreview.dev")) {
+    return `${protocol}//${hostname.replace("-5173.githubpreview.dev", "-4000.githubpreview.dev")}`;
+  }
+
+  return "http://localhost:4000";
+}
+
+const apiBaseUrl = resolveApiBaseUrl();
 
 function polygonFromGeoJson(geometry) {
   const rings =
@@ -81,7 +99,7 @@ export default function OceanGuardDashboard() {
         }
       } catch (requestError) {
         if (active) {
-          setError(requestError.message);
+          setError(`${requestError.message}. API: ${apiBaseUrl}`);
         }
       } finally {
         if (active) {
