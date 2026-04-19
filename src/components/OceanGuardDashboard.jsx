@@ -507,31 +507,47 @@ export default function OceanGuardDashboard() {
       header: true,
       dynamicTyping: true,
       skipEmptyLines: true,
-      transformHeader: (h) => h.trim(),
+      transformHeader: (h) => h.trim().toLowerCase(), // Lowercase for easier matching
       complete: async (results) => {
-        // Strict check to ensure we don't skip 0 coordinates and handle missing data correctly
+        const headers = results.meta.fields;
+        
+        // Smart Detection: Find columns that look like coordinates
+        const latHeader = headers.find(h => h.includes("lat") || h === "y");
+        const lonHeader = headers.find(h => h.includes("lon") || h.includes("long") || h === "x");
+
+        if (!latHeader || !lonHeader) {
+          alert(`Could not find coordinate columns. Detected headers: ${headers.join(", ")}`);
+          return;
+        }
+
         const data = results.data.filter(row => {
-          const lat = row["location-lat"];
-          const lon = row["location-long"];
+          const lat = row[latHeader];
+          const lon = row[lonHeader];
           return lat !== null && lat !== undefined && lat !== "" && 
                  lon !== null && lon !== undefined && lon !== "";
         });
 
-        console.log(`CSV Upload: Parsed ${results.data.length} rows, found ${data.length} valid coordinate pairs.`);
+        console.log(`Smart Upload: Using '${latHeader}' and '${lonHeader}'. Found ${data.length} valid points.`);
 
         if (data.length === 0) {
-          alert("No valid data found. Ensure your CSV has 'location-lat' and 'location-long' headers and coordinate values.");
-          console.error("CSV Headers found:", results.meta.fields);
+          alert("No valid coordinate data found in those columns.");
           return;
         }
 
-        const coordinates = data.map(row => [row["location-long"], row["location-lat"]]);
+        const coordinates = data.map(row => [
+          parseFloat(row[lonHeader]), 
+          parseFloat(row[latHeader])
+        ]);
+
         const geojson = {
           type: "FeatureCollection",
           features: [
             {
               type: "Feature",
-              properties: { name: file.name.replace(".csv", "") },
+              properties: { 
+                name: file.name.replace(".csv", ""),
+                id: "uploaded-migration"
+              },
               geometry: {
                 type: "LineString",
                 coordinates
@@ -539,6 +555,9 @@ export default function OceanGuardDashboard() {
             }
           ]
         };
+
+        // Update whaleData so the AI Impact Report analyzes this new data!
+        setWhaleData(geojson);
 
         const blob = new Blob([JSON.stringify(geojson)], { type: "application/geo+json" });
         const url = URL.createObjectURL(blob);
