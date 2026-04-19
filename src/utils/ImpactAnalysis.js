@@ -36,18 +36,16 @@ function getLineToZoneDistanceKm(lineFeature, zoneFeature) {
 }
 
 /**
- * Analyzes the impact of contamination and shipping traffic on a specific migration path.
+ * Analyzes the impact of ocean trash on a specific whale migration path.
  * @param {Object} whaleFeature - A single GeoJSON Feature (LineString)
  * @param {Object} garbageGeoJson - FeatureCollection of garbage patches
- * @param {Object} shipsGeoJson - FeatureCollection of shipping lanes
  * @returns {Object} Deep analysis results.
  */
-export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJson) {
-  if (!whaleFeature) return { overallRiskScore: 0, garbageIntersections: [], shippingRisks: [] };
+export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson) {
+  if (!whaleFeature) return { overallRiskScore: 0, garbageIntersections: [] };
 
   const whaleName = whaleFeature.properties?.name || "Target Pod";
   const garbageIntersections = [];
-  const shippingRisks = [];
 
   if (garbageGeoJson && garbageGeoJson.features) {
     garbageGeoJson.features.forEach((zone) => {
@@ -74,31 +72,17 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
     });
   }
 
-  if (shipsGeoJson && shipsGeoJson.features) {
-    shipsGeoJson.features.forEach((lane) => {
-      const intersect = turf.lineIntersect(whaleFeature, lane);
-      if (intersect.features.length > 0) {
-        shippingRisks.push({
-          lane: lane.properties.name,
-          traffic: lane.properties.traffic_density || "Moderate",
-          points: intersect.features.length
-        });
-      }
-    });
-  }
-
   const rawRiskScore = garbageIntersections.reduce((score, item) => {
     const proximityMultiplier = item.distanceKm
       ? Math.max(0.25, 1 - (item.distanceKm / PROXIMITY_RISK_DISTANCE_KM))
       : 1;
 
     return score + (getRiskWeight(item.risk) * proximityMultiplier);
-  }, 0) + (shippingRisks.length * 1.5);
+  }, 0);
 
   return {
     whaleName,
     garbageIntersections,
-    shippingRisks,
     overallRiskScore: clampRiskScore(rawRiskScore)
   };
 }
@@ -107,7 +91,7 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
  * AI Agent prompt generator and report formatter.
  */
 export function generateAgenticReport(analysis) {
-  const { overallRiskScore, garbageIntersections, shippingRisks } = analysis;
+  const { overallRiskScore, garbageIntersections } = analysis;
   const riskScore = clampRiskScore(overallRiskScore);
   
   let status = "OPTIMAL";
@@ -128,19 +112,12 @@ export function generateAgenticReport(analysis) {
     sections: [
       {
         id: "env",
-        label: "Environmental Stress",
-        value: garbageIntersections.length > 0 ? `${garbageIntersections.length} Risk Zones Detected` : "No Contamination Detected",
+        label: "Trash Exposure",
+        value: garbageIntersections.length > 0 ? `${garbageIntersections.length} Trash Risk Zones Detected` : "No Trash Zone Detected",
         details: garbageIntersections.map(g => g.distanceKm
-          ? `${g.patch} is within ${Math.round(g.distanceKm)} km (${g.risk} zone). Monitor exposure corridor.`
+          ? `${g.patch} is within ${Math.round(g.distanceKm)} km (${g.risk} zone). Monitor this migration route.`
           : `Crosses ${g.patch} (${g.risk} zone). High microplastic density detected.`),
         isAlert: garbageIntersections.length > 0
-      },
-      {
-        id: "traffic",
-        label: "Maritime Conflict",
-        value: shippingRisks.length > 0 ? `${shippingRisks.length} Traffic Corridors` : "Clear Navigation",
-        details: shippingRisks.map(r => `Crosses ${r.lane} (${r.traffic} traffic). Risk of acoustic stress: Elevated.`),
-        isAlert: shippingRisks.length > 0
       },
       {
         id: "rec",
@@ -148,8 +125,8 @@ export function generateAgenticReport(analysis) {
         value: "Protocol Assigned",
         details: [
           riskScore > 5
-            ? "Immediate rerouting of maritime traffic or deployment of cleanup vessel recommended." 
-            : "Continued observation. Deploy acoustic sensors to monitor stress levels."
+            ? "High trash exposure detected. Prioritize cleanup monitoring and flag this route for conservation review."
+            : "Continued observation recommended. Keep tracking this migration path against ocean trash zones."
         ],
         isSpecial: true
       }
@@ -161,27 +138,26 @@ export function generateMockAIReport(analysis) {
   // Simple wrapper to maintain compatibility with the new structured UI
   return generateAgenticReport({
     overallRiskScore: analysis.riskScore || 0,
-    garbageIntersections: analysis.garbageIntersections || [],
-    shippingRisks: []
+    garbageIntersections: analysis.garbageIntersections || []
   });
 }
 
 // Keep the old functions for compatibility
-export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
+export function analyzeImpact(whaleGeoJson, garbageGeoJson) {
   const whaleFeatures = whaleGeoJson?.features || [];
-  const contaminationFeatures = contaminationGeoJson?.features || [];
+  const garbageFeatures = garbageGeoJson?.features || [];
   const garbageIntersections = [];
   const intersectingPaths = new Set();
 
   whaleFeatures.forEach((whaleFeature, whaleIndex) => {
     if (!whaleFeature?.geometry) return;
 
-    contaminationFeatures.forEach((zone) => {
+    garbageFeatures.forEach((zone) => {
       if (!zone?.geometry) return;
 
       const intersect = turf.lineIntersect(whaleFeature, zone);
       if (intersect.features.length > 0) {
-        const patch = zone.properties?.name || "Contamination Zone";
+        const patch = zone.properties?.name || "Trash Zone";
         const risk = zone.properties?.risk_level || "High";
 
         intersectingPaths.add(whaleIndex);
@@ -196,7 +172,7 @@ export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
 
       const distanceKm = getLineToZoneDistanceKm(whaleFeature, zone);
       if (distanceKm <= PROXIMITY_RISK_DISTANCE_KM) {
-        const patch = zone.properties?.name || "Contamination Zone";
+        const patch = zone.properties?.name || "Trash Zone";
         const risk = zone.properties?.risk_level || "High";
 
         intersectingPaths.add(whaleIndex);

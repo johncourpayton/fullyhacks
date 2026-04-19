@@ -63,12 +63,9 @@ function getGeoJsonRenderer(geometryType, title) {
     };
   }
 
-  // Professional teal for whales, gold for ships
   return {
     type: "simple",
-    symbol: title?.toLowerCase().includes("shipping") 
-      ? { type: "simple-line", color: [255, 165, 0, 0.8], width: 2, cap: "round" }
-      : getWhaleSymbol([0, 240, 255])
+    symbol: getWhaleSymbol([0, 240, 255])
   };
 }
 
@@ -109,7 +106,6 @@ export default function OceanGuardDashboard() {
   const [impactReport, setImpactReport] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [whaleData, setWhaleData] = useState(null);
-  const [shippingData, setShippingData] = useState(null);
   const [garbageData, setGarbageData] = useState(null);
 
   const [hoveredWhale, setHoveredWhale] = useState(null);
@@ -174,16 +170,13 @@ export default function OceanGuardDashboard() {
 
   const loadDynamicLayers = async (map) => {
     const files = await getDataGeoJsonFiles();
-    const visibleFiles = files.filter(f => !f.url.includes("shipping_lanes"));
-    const layers = await Promise.all(visibleFiles.map(createDataGeoJsonLayer));
+    const layers = await Promise.all(files.map(createDataGeoJsonLayer));
     layers.forEach(l => l.visible = true);
     dataGeoJsonLayersRef.current = layers;
     map.addMany(layers);
 
     const whaleFile = files.find(f => f.url.includes("whales"));
     if (whaleFile) fetch(whaleFile.url).then(r => r.json()).then(setWhaleData);
-    const shipFile = files.find(f => f.url.includes("shipping_lanes"));
-    if (shipFile) fetch(shipFile.url).then(r => r.json()).then(setShippingData);
     const garbageFile = files.find(f => f.url.includes("garbage_patches"));
     if (garbageFile) fetch(garbageFile.url).then(r => r.json()).then(setGarbageData);
   };
@@ -198,7 +191,7 @@ export default function OceanGuardDashboard() {
           ? geometry
           : webMercatorUtils.webMercatorToGeographic(geometry);
         const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geographicGeometry.toJSON().paths[0] }, properties: { name: "Target Pod" } };
-        const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData, shippingData);
+        const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData);
         setImpactReport(generateAgenticReport(analysis));
       } catch (err) {
         console.error("Analysis Error:", err);
