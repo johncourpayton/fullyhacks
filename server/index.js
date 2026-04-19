@@ -13,6 +13,14 @@ const port = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
+app.get("/", (_req, res) => {
+  res.json({
+    service: "OceanGuard API",
+    message: "This is the backend API. Open the Vite frontend on port 5173 to view the dashboard.",
+    endpoints: ["/api/health", "/api/contamination", "/api/migration"]
+  });
+});
+
 async function queryOrMock(queryFn, fallback) {
   try {
     return await queryFn();
