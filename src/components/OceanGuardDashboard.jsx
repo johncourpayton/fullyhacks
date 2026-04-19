@@ -13,22 +13,105 @@ const OCEAN_DATA_LAYERS = [
     id: "chlorophyll",
     label: "Algal Blooms",
     title: "Chlorophyll-a",
-    portalItemId: "21b6b8cf5ce642f0841085aea1db51a4",
-    opacity: 0.9
+    source: "demo-graphics"
   },
   {
     id: "temperature",
     label: "Sea Temp",
     title: "Sea Surface Temperature",
-    portalItemId: "0f373f0ad5644d259839786cb500d3c7",
-    opacity: 0.85
+    source: "demo-graphics"
   },
   {
     id: "currents",
     label: "Currents",
     title: "Ocean Surface Currents",
     portalItemId: "3f453a562771441f9d42a2f03c9b6111",
+    source: "arcgis-portal",
     opacity: 0.95
+  }
+];
+
+const CHLOROPHYLL_BLOOMS = [
+  {
+    name: "California Upwelling Bloom",
+    coordinates: [
+      [
+        [-126.5, 32.0],
+        [-121.0, 33.0],
+        [-120.5, 38.0],
+        [-126.0, 40.0],
+        [-130.0, 36.0],
+        [-126.5, 32.0]
+      ]
+    ]
+  },
+  {
+    name: "North Atlantic Spring Bloom",
+    coordinates: [
+      [
+        [-55.0, 42.0],
+        [-25.0, 42.0],
+        [-18.0, 55.0],
+        [-42.0, 62.0],
+        [-60.0, 52.0],
+        [-55.0, 42.0]
+      ]
+    ]
+  },
+  {
+    name: "Arabian Sea Bloom",
+    coordinates: [
+      [
+        [52.0, 9.0],
+        [70.0, 8.0],
+        [74.0, 19.0],
+        [62.0, 25.0],
+        [50.0, 19.0],
+        [52.0, 9.0]
+      ]
+    ]
+  }
+];
+
+const SEA_TEMPERATURE_BANDS = [
+  {
+    name: "Warm Equatorial Waters",
+    color: [239, 68, 68, 0.28],
+    coordinates: [
+      [
+        [-180.0, -18.0],
+        [180.0, -18.0],
+        [180.0, 18.0],
+        [-180.0, 18.0],
+        [-180.0, -18.0]
+      ]
+    ]
+  },
+  {
+    name: "Temperate Mid-Latitude Waters",
+    color: [250, 204, 21, 0.22],
+    coordinates: [
+      [
+        [-180.0, 18.0],
+        [180.0, 18.0],
+        [180.0, 45.0],
+        [-180.0, 45.0],
+        [-180.0, 18.0]
+      ]
+    ]
+  },
+  {
+    name: "Cool Southern Ocean Waters",
+    color: [59, 130, 246, 0.22],
+    coordinates: [
+      [
+        [-180.0, -60.0],
+        [180.0, -60.0],
+        [180.0, -35.0],
+        [-180.0, -35.0],
+        [-180.0, -60.0]
+      ]
+    ]
   }
 ];
 
@@ -72,6 +155,56 @@ function polylineFromGeoJson(path) {
   return new Polyline({
     paths: [path.coordinates],
     spatialReference: { wkid: 4326 }
+  });
+}
+
+function addChlorophyllGraphics(layer) {
+  CHLOROPHYLL_BLOOMS.forEach((bloom) => {
+    layer.add(
+      new Graphic({
+        geometry: polygonFromGeoJson({
+          type: "Polygon",
+          coordinates: bloom.coordinates
+        }),
+        attributes: {
+          name: bloom.name,
+          layerType: "chlorophyll"
+        },
+        symbol: {
+          type: "simple-fill",
+          color: [34, 197, 94, 0.42],
+          outline: {
+            color: [21, 128, 61, 0.9],
+            width: 1.2
+          }
+        }
+      })
+    );
+  });
+}
+
+function addSeaTemperatureGraphics(layer) {
+  SEA_TEMPERATURE_BANDS.forEach((band) => {
+    layer.add(
+      new Graphic({
+        geometry: polygonFromGeoJson({
+          type: "Polygon",
+          coordinates: band.coordinates
+        }),
+        attributes: {
+          name: band.name,
+          layerType: "temperature"
+        },
+        symbol: {
+          type: "simple-fill",
+          color: band.color,
+          outline: {
+            color: [39, 39, 42, 0.35],
+            width: 0.6
+          }
+        }
+      })
+    );
   });
 }
 
@@ -210,14 +343,39 @@ export default function OceanGuardDashboard() {
     }
 
     const contaminationLayer = new GraphicsLayer({ title: "Contamination Pockets" });
+    const chlorophyllLayer = new GraphicsLayer({
+      title: "Chlorophyll-a",
+      visible: oceanLayerVisibilityRef.current.chlorophyll
+    });
+    const temperatureLayer = new GraphicsLayer({
+      title: "Sea Surface Temperature",
+      visible: oceanLayerVisibilityRef.current.temperature
+    });
     const oilSpillLayer = new GraphicsLayer({ title: "Possible Oil Spills" });
     const migrationLayer = new GraphicsLayer({ title: "Animal Migration Paths" });
     const labelLayer = new GraphicsLayer({ title: "Garbage Patch Labels" });
     const map = new Map({
       basemap: "oceans",
-      layers: [contaminationLayer, oilSpillLayer, migrationLayer, labelLayer]
+      layers: [
+        chlorophyllLayer,
+        temperatureLayer,
+        contaminationLayer,
+        oilSpillLayer,
+        migrationLayer,
+        labelLayer
+      ]
     });
     let active = true;
+
+    addChlorophyllGraphics(chlorophyllLayer);
+    addSeaTemperatureGraphics(temperatureLayer);
+    oceanDataLayersRef.current.chlorophyll = chlorophyllLayer;
+    oceanDataLayersRef.current.temperature = temperatureLayer;
+    setOceanLayerStatus((current) => ({
+      ...current,
+      chlorophyll: "ready",
+      temperature: "ready"
+    }));
 
     const view = new SceneView({
       container: mapRef.current,
@@ -281,6 +439,10 @@ export default function OceanGuardDashboard() {
     labelLayerRef.current = labelLayer;
 
     OCEAN_DATA_LAYERS.forEach(async (layerConfig) => {
+      if (layerConfig.source !== "arcgis-portal") {
+        return;
+      }
+
       try {
         const layer = await Layer.fromPortalItem({
           portalItem: {
@@ -523,7 +685,13 @@ export default function OceanGuardDashboard() {
               const enabled = oceanLayerVisibility[layerConfig.id];
               const status = oceanLayerStatus[layerConfig.id];
               const statusText =
-                status === "failed" ? "failed to load" : enabled ? "active" : status;
+                status === "failed"
+                  ? "failed to load"
+                  : enabled
+                    ? layerConfig.source === "demo-graphics"
+                      ? "active demo overlay"
+                      : "active"
+                    : status;
 
               return (
                 <p key={`${layerConfig.id}-status`}>
