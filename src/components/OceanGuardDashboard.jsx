@@ -1,9 +1,16 @@
 import { useEffect, useRef } from "react";
-import WMSLayer from "@arcgis/core/layers/WMSLayer.js";
 import Map from "@arcgis/core/Map.js";
+import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
 
-const NASA_GIBS_WMS_URL = "https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi";
+const NASA_GIBS_CHLOROPHYLL_LAYER = "VIIRS_NOAA20_Chlorophyll_a_v2022.0_NRT";
+
+function getGibsDate(daysBack = 2) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - daysBack);
+
+  return date.toISOString().slice(0, 10);
+}
 
 export default function OceanGuardDashboard() {
   const mapRef = useRef(null);
@@ -14,18 +21,15 @@ export default function OceanGuardDashboard() {
       return undefined;
     }
 
-    const chlorophyllLayer = new WMSLayer({
-      url: NASA_GIBS_WMS_URL,
-      title: "NASA GIBS Global Chlorophyll-a",
-      opacity: 0.72,
+    const chlorophyllDate = getGibsDate();
+    const chlorophyllLayer = new WebTileLayer({
+      urlTemplate:
+        `https://gibs-a.earthdata.nasa.gov/wmts/epsg3857/all/${NASA_GIBS_CHLOROPHYLL_LAYER}` +
+        `/default/${chlorophyllDate}/GoogleMapsCompatible_Level7/{level}/{row}/{col}.png`,
+      title: `NASA GIBS Chlorophyll-a (${chlorophyllDate})`,
+      opacity: 0.82,
       visible: true,
-      sublayers: [
-        {
-          name: "VIIRS_SNPP_L2_Chlorophyll_A",
-          title: "Chlorophyll-a VIIRS/Suomi NPP",
-          visible: true
-        }
-      ]
+      copyright: "NASA GIBS / OB.DAAC"
     });
 
     const map = new Map({
