@@ -1,5 +1,7 @@
 import * as turf from "@turf/turf";
 
+const PROXIMITY_RISK_DISTANCE_KM = 750;
+
 function clampRiskScore(score) {
   const numericScore = Number(score) || 0;
   return Math.min(10, Math.max(0, numericScore));
@@ -15,6 +17,21 @@ function getRiskWeight(riskLevel) {
       return 1.5;
     default:
       return 1;
+  }
+}
+
+function getLineToZoneDistanceKm(lineFeature, zoneFeature) {
+  try {
+    const points = [
+      turf.centroid(zoneFeature),
+      ...turf.coordAll(zoneFeature).map((coordinate) => turf.point(coordinate))
+    ];
+
+    return Math.min(
+      ...points.map((point) => turf.pointToLineDistance(point, lineFeature, { units: "kilometers" }))
+    );
+  } catch {
+    return Infinity;
   }
 }
 
@@ -39,7 +56,19 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
         garbageIntersections.push({
           patch: zone.properties.name,
           risk: zone.properties.risk_level || "High",
-          points: intersect.features.length
+          points: intersect.features.length,
+          distanceKm: 0
+        });
+        return;
+      }
+
+      const distanceKm = getLineToZoneDistanceKm(whaleFeature, zone);
+      if (distanceKm <= PROXIMITY_RISK_DISTANCE_KM) {
+        garbageIntersections.push({
+          patch: zone.properties.name,
+          risk: zone.properties.risk_level || "High",
+          points: 0,
+          distanceKm
         });
       }
     });
@@ -58,7 +87,13 @@ export function analyzeSpecificPodImpact(whaleFeature, garbageGeoJson, shipsGeoJ
     });
   }
 
-  const rawRiskScore = garbageIntersections.reduce((score, item) => score + getRiskWeight(item.risk), 0) + (shippingRisks.length * 1.5);
+  const rawRiskScore = garbageIntersections.reduce((score, item) => {
+    const proximityMultiplier = item.distanceKm
+      ? Math.max(0.25, 1 - (item.distanceKm / PROXIMITY_RISK_DISTANCE_KM))
+      : 1;
+
+    return score + (getRiskWeight(item.risk) * proximityMultiplier);
+  }, 0) + (shippingRisks.length * 1.5);
 
   return {
     whaleName,
@@ -94,8 +129,10 @@ export function generateAgenticReport(analysis) {
       {
         id: "env",
         label: "Environmental Stress",
-        value: garbageIntersections.length > 0 ? `${garbageIntersections.length} Contamination Intersects` : "No Contamination Detected",
-        details: garbageIntersections.map(g => `Proximity to ${g.patch} (${g.risk} zone). High microplastic density detected.`),
+        value: garbageIntersections.length > 0 ? `${garbageIntersections.length} Risk Zones Detected` : "No Contamination Detected",
+        details: garbageIntersections.map(g => g.distanceKm
+          ? `${g.patch} is within ${Math.round(g.distanceKm)} km (${g.risk} zone). Monitor exposure corridor.`
+          : `Crosses ${g.patch} (${g.risk} zone). High microplastic density detected.`),
         isAlert: garbageIntersections.length > 0
       },
       {
@@ -151,7 +188,23 @@ export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
         garbageIntersections.push({
           patch,
           risk,
-          points: intersect.features.length
+          points: intersect.features.length,
+          distanceKm: 0
+        });
+        return;
+      }
+
+      const distanceKm = getLineToZoneDistanceKm(whaleFeature, zone);
+      if (distanceKm <= PROXIMITY_RISK_DISTANCE_KM) {
+        const patch = zone.properties?.name || "Contamination Zone";
+        const risk = zone.properties?.risk_level || "High";
+
+        intersectingPaths.add(whaleIndex);
+        garbageIntersections.push({
+          patch,
+          risk,
+          points: 0,
+          distanceKm
         });
       }
     });
@@ -160,7 +213,13 @@ export function analyzeImpact(whaleGeoJson, contaminationGeoJson) {
   const exposureScore = whaleFeatures.length > 0
     ? (intersectingPaths.size / whaleFeatures.length) * 7
     : 0;
-  const severityScore = garbageIntersections.reduce((score, item) => score + getRiskWeight(item.risk), 0);
+  const severityScore = garbageIntersections.reduce((score, item) => {
+    const proximityMultiplier = item.distanceKm
+      ? Math.max(0.25, 1 - (item.distanceKm / PROXIMITY_RISK_DISTANCE_KM))
+      : 1;
+
+    return score + (getRiskWeight(item.risk) * proximityMultiplier);
+  }, 0);
 
   return {
     riskScore: clampRiskScore(exposureScore + severityScore),

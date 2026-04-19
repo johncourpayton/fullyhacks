@@ -3,6 +3,7 @@ import GeoJSONLayer from "@arcgis/core/layers/GeoJSONLayer.js";
 import Map from "@arcgis/core/Map.js";
 import WebTileLayer from "@arcgis/core/layers/WebTileLayer.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
+import * as webMercatorUtils from "@arcgis/core/geometry/support/webMercatorUtils.js";
 import { analyzeImpact, generateMockAIReport, analyzeSpecificPodImpact, generateAgenticReport } from "../utils/ImpactAnalysis.js";
 import Papa from "papaparse";
 
@@ -137,7 +138,7 @@ export default function OceanGuardDashboard() {
     view.on("click", async (event) => {
       const response = await view.hitTest(event);
       const results = response.results.filter(r => r.graphic?.layer?.title?.includes("Whale") || r.graphic?.layer?.title?.includes("Uploaded"));
-      if (results.length > 0) handleAnalyzeSpecificPath(results[0].graphic.geometry.toJSON());
+      if (results.length > 0) handleAnalyzeSpecificPath(results[0].graphic.geometry);
     });
 
     view.on("pointer-move", async (event) => {
@@ -193,7 +194,10 @@ export default function OceanGuardDashboard() {
     
     setTimeout(() => {
       try {
-        const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geometry.paths[0] }, properties: { name: "Target Pod" } };
+        const geographicGeometry = geometry.spatialReference?.isWGS84
+          ? geometry
+          : webMercatorUtils.webMercatorToGeographic(geometry);
+        const whaleFeature = { type: "Feature", geometry: { type: "LineString", coordinates: geographicGeometry.toJSON().paths[0] }, properties: { name: "Target Pod" } };
         const analysis = analyzeSpecificPodImpact(whaleFeature, garbageData, shippingData);
         setImpactReport(generateAgenticReport(analysis));
       } catch (err) {
