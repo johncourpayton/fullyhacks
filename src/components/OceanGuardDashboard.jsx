@@ -243,22 +243,80 @@ export default function OceanGuardDashboard() {
             if (!file) return;
             Papa.parse(file, { header: true, dynamicTyping: true, complete: (res) => {
               try {
-                const latH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lat") || k === "y");
-                const lonH = Object.keys(res.data[0]).find(k => k.toLowerCase().includes("lon") || k === "x");
-                const coords = res.data.map(r => [parseFloat(r[lonH]), parseFloat(r[latH])]).filter(c => !isNaN(c[0]));
+                const headers = Object.keys(res.data[0]);
+                const latH = headers.find(k => k.toLowerCase().includes("lat"));
+                const lonH = headers.find(k => k.toLowerCase().includes("lon"));
+                const timeH = headers.find(k => k.toLowerCase().includes("time"));
+                const individualH = headers.find(k => {
+                  const lower = k.toLowerCase();
+                  return lower.includes("individual") || lower.includes("id");
+                });
                 
                 const formatWhaleName = (name) => {
                   return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
                 };
 
                 const species = formatWhaleName(file.name);
-                const geojson = { 
-                  type: "FeatureCollection", 
-                  features: [{ 
-                    type: "Feature", 
-                    geometry: { type: "LineString", coordinates: coords }, 
-                    properties: { name: species, file_source: file.name } 
-                  }] 
+                const groupedRows = res.data.reduce((groups, row) => {
+                  const key = individualH ? row[individualH] || "Unknown Individual" : "Migration Path";
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(row);
+                  return groups;
+                }, {});
+
+                const features = Object.entries(groupedRows).flatMap(([individual, rows]) => {
+                  const sortedRows = timeH
+                    ? [...rows].sort((a, b) => new Date(a[timeH]) - new Date(b[timeH]))
+                    : rows;
+                  const segments = [];
+                  let currentSegment = [];
+
+                  sortedRows.forEach((row) => {
+                    const longitude = parseFloat(row[lonH]);
+                    const latitude = parseFloat(row[latH]);
+
+                    if (Number.isNaN(longitude) || Number.isNaN(latitude)) {
+                      return;
+                    }
+
+                    const point = [longitude, latitude];
+                    const previousPoint = currentSegment[currentSegment.length - 1];
+
+                    if (previousPoint) {
+                      const dx = point[0] - previousPoint[0];
+                      const dy = point[1] - previousPoint[1];
+                      const distanceKm = Math.sqrt(dx ** 2 + dy ** 2) * 111;
+
+                      if (distanceKm > 300) {
+                        if (currentSegment.length > 1) {
+                          segments.push(currentSegment);
+                        }
+                        currentSegment = [];
+                      }
+                    }
+
+                    currentSegment.push(point);
+                  });
+
+                  if (currentSegment.length > 1) {
+                    segments.push(currentSegment);
+                  }
+
+                  return segments.map((segment, index) => ({
+                    type: "Feature",
+                    geometry: { type: "LineString", coordinates: segment },
+                    properties: {
+                      name: species,
+                      file_source: file.name,
+                      individual,
+                      segment_index: index + 1
+                    }
+                  }));
+                });
+
+                const geojson = {
+                  type: "FeatureCollection",
+                  features
                 };
                 setWhaleData(geojson);
                 const layer = new GeoJSONLayer({ 
