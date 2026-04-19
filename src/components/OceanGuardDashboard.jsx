@@ -4,8 +4,33 @@ import Polygon from "@arcgis/core/geometry/Polygon.js";
 import Polyline from "@arcgis/core/geometry/Polyline.js";
 import * as geometryEngine from "@arcgis/core/geometry/geometryEngine.js";
 import GraphicsLayer from "@arcgis/core/layers/GraphicsLayer.js";
+import Layer from "@arcgis/core/layers/Layer.js";
 import Map from "@arcgis/core/Map.js";
 import SceneView from "@arcgis/core/views/SceneView.js";
+
+const OCEAN_DATA_LAYERS = [
+  {
+    id: "chlorophyll",
+    label: "Algal Blooms",
+    title: "Chlorophyll-a",
+    portalItemId: "21b6b8cf5ce642f0841085aea1db51a4",
+    opacity: 0.65
+  },
+  {
+    id: "temperature",
+    label: "Sea Temp",
+    title: "Sea Surface Temperature",
+    portalItemId: "0f373f0ad5644d259839786cb500d3c7",
+    opacity: 0.55
+  },
+  {
+    id: "currents",
+    label: "Currents",
+    title: "Ocean Surface Currents",
+    portalItemId: "3f453a562771441f9d42a2f03c9b6111",
+    opacity: 0.75
+  }
+];
 
 function resolveApiBaseUrl() {
   const { hostname, protocol } = window.location;
@@ -74,12 +99,27 @@ export default function OceanGuardDashboard() {
   const migrationLayerRef = useRef(null);
   const labelLayerRef = useRef(null);
   const oilSpillLayerRef = useRef(null);
+  const oceanDataLayersRef = useRef({});
+  const oceanLayerVisibilityRef = useRef({
+    chlorophyll: false,
+    temperature: false,
+    currents: false
+  });
   const [contamination, setContamination] = useState([]);
   const [migrations, setMigrations] = useState([]);
   const [oilSpills, setOilSpills] = useState([]);
+  const [oceanLayerVisibility, setOceanLayerVisibility] = useState({
+    chlorophyll: false,
+    temperature: false,
+    currents: false
+  });
   const [selectedPocketId, setSelectedPocketId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    oceanLayerVisibilityRef.current = oceanLayerVisibility;
+  }, [oceanLayerVisibility]);
 
   useEffect(() => {
     let active = true;
@@ -172,6 +212,7 @@ export default function OceanGuardDashboard() {
       basemap: "oceans",
       layers: [contaminationLayer, oilSpillLayer, migrationLayer, labelLayer]
     });
+    let active = true;
 
     const view = new SceneView({
       container: mapRef.current,
@@ -234,7 +275,31 @@ export default function OceanGuardDashboard() {
     migrationLayerRef.current = migrationLayer;
     labelLayerRef.current = labelLayer;
 
+    OCEAN_DATA_LAYERS.forEach(async (layerConfig) => {
+      try {
+        const layer = await Layer.fromPortalItem({
+          portalItem: {
+            id: layerConfig.portalItemId
+          }
+        });
+
+        if (!active) {
+          layer.destroy();
+          return;
+        }
+
+        layer.title = layerConfig.title;
+        layer.opacity = layerConfig.opacity;
+        layer.visible = oceanLayerVisibilityRef.current[layerConfig.id];
+        oceanDataLayersRef.current[layerConfig.id] = layer;
+        map.add(layer, 0);
+      } catch (layerError) {
+        console.warn(`Unable to load ${layerConfig.title}:`, layerError.message);
+      }
+    });
+
     return () => {
+      active = false;
       clickHandle.remove();
       view.destroy();
       viewRef.current = null;
@@ -242,8 +307,19 @@ export default function OceanGuardDashboard() {
       oilSpillLayerRef.current = null;
       migrationLayerRef.current = null;
       labelLayerRef.current = null;
+      oceanDataLayersRef.current = {};
     };
   }, []);
+
+  useEffect(() => {
+    Object.entries(oceanLayerVisibility).forEach(([layerId, visible]) => {
+      const layer = oceanDataLayersRef.current[layerId];
+
+      if (layer) {
+        layer.visible = visible;
+      }
+    });
+  }, [oceanLayerVisibility]);
 
   useEffect(() => {
     const contaminationLayer = contaminationLayerRef.current;
@@ -388,6 +464,36 @@ export default function OceanGuardDashboard() {
               Clear
             </button>
           )}
+        </div>
+
+        <div className="border-b border-zinc-200 px-6 py-4">
+          <p className="text-sm font-medium text-zinc-700">Ocean overlays</p>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            {OCEAN_DATA_LAYERS.map((layerConfig) => {
+              const enabled = oceanLayerVisibility[layerConfig.id];
+
+              return (
+                <button
+                  className={`rounded-md border px-2 py-2 text-xs font-semibold transition ${
+                    enabled
+                      ? "border-teal-700 bg-teal-700 text-white"
+                      : "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-100"
+                  }`}
+                  key={layerConfig.id}
+                  type="button"
+                  aria-pressed={enabled}
+                  onClick={() =>
+                    setOceanLayerVisibility((current) => ({
+                      ...current,
+                      [layerConfig.id]: !current[layerConfig.id]
+                    }))
+                  }
+                >
+                  {layerConfig.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
