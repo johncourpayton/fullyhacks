@@ -247,10 +247,13 @@ export default function OceanGuardDashboard() {
                 const latH = headers.find(k => k.toLowerCase().includes("lat"));
                 const lonH = headers.find(k => k.toLowerCase().includes("lon"));
                 const timeH = headers.find(k => k.toLowerCase().includes("time"));
-                const individualH = headers.find(k => {
+                const candidateIndividualH = headers.find(k => {
                   const lower = k.toLowerCase();
                   return lower.includes("individual") || lower.includes("id");
                 });
+                const individualH = candidateIndividualH && new Set(res.data.map(row => row[candidateIndividualH]).filter(Boolean)).size < res.data.filter(row => row[candidateIndividualH]).length
+                  ? candidateIndividualH
+                  : null;
                 
                 const formatWhaleName = (name) => {
                   return name.replace(/\.csv$/i, "").replace(/_/g, " ").replace(/([A-Z])/g, " $1").replace(/migration/i, "").replace(/path/i, "").trim().replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase());
@@ -264,7 +267,7 @@ export default function OceanGuardDashboard() {
                   return groups;
                 }, {});
 
-                const features = Object.entries(groupedRows).flatMap(([individual, rows]) => {
+                const createFeaturesFromGroups = (groups) => Object.entries(groups).flatMap(([individual, rows]) => {
                   const sortedRows = timeH
                     ? [...rows].sort((a, b) => new Date(a[timeH]) - new Date(b[timeH]))
                     : rows;
@@ -313,6 +316,7 @@ export default function OceanGuardDashboard() {
                     }
                   }));
                 });
+                const features = createFeaturesFromGroups(groupedRows);
 
                 const geojson = {
                   type: "FeatureCollection",
@@ -325,7 +329,11 @@ export default function OceanGuardDashboard() {
                   renderer: { type: "simple", symbol: getWhaleSymbol([57, 255, 20]) } 
                 });
                 viewRef.current.map.add(layer);
-                viewRef.current.goTo(layer.fullExtent);
+                layer.when(() => {
+                  if (layer.fullExtent) {
+                    viewRef.current.goTo(layer.fullExtent);
+                  }
+                });
               } catch (err) {
                 console.error("CSV Import Error:", err);
                 alert("Failed to parse CSV. Please ensure it has Latitude/Longitude headers.");
