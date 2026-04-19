@@ -14,21 +14,21 @@ const OCEAN_DATA_LAYERS = [
     label: "Algal Blooms",
     title: "Chlorophyll-a",
     portalItemId: "21b6b8cf5ce642f0841085aea1db51a4",
-    opacity: 0.65
+    opacity: 0.9
   },
   {
     id: "temperature",
     label: "Sea Temp",
     title: "Sea Surface Temperature",
     portalItemId: "0f373f0ad5644d259839786cb500d3c7",
-    opacity: 0.55
+    opacity: 0.85
   },
   {
     id: "currents",
     label: "Currents",
     title: "Ocean Surface Currents",
     portalItemId: "3f453a562771441f9d42a2f03c9b6111",
-    opacity: 0.75
+    opacity: 0.95
   }
 ];
 
@@ -112,6 +112,11 @@ export default function OceanGuardDashboard() {
     chlorophyll: false,
     temperature: false,
     currents: false
+  });
+  const [oceanLayerStatus, setOceanLayerStatus] = useState({
+    chlorophyll: "loading",
+    temperature: "loading",
+    currents: "loading"
   });
   const [selectedPocketId, setSelectedPocketId] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -290,11 +295,30 @@ export default function OceanGuardDashboard() {
 
         layer.title = layerConfig.title;
         layer.opacity = layerConfig.opacity;
+        layer.blendMode = "multiply";
         layer.visible = oceanLayerVisibilityRef.current[layerConfig.id];
         oceanDataLayersRef.current[layerConfig.id] = layer;
         map.add(layer, 0);
+        await layer.when();
+
+        if (!active) {
+          return;
+        }
+
+        setOceanLayerStatus((current) => ({
+          ...current,
+          [layerConfig.id]: "ready"
+        }));
       } catch (layerError) {
+        if (!active) {
+          return;
+        }
+
         console.warn(`Unable to load ${layerConfig.title}:`, layerError.message);
+        setOceanLayerStatus((current) => ({
+          ...current,
+          [layerConfig.id]: "failed"
+        }));
       }
     });
 
@@ -491,6 +515,20 @@ export default function OceanGuardDashboard() {
                 >
                   {layerConfig.label}
                 </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 space-y-1 text-xs text-zinc-500">
+            {OCEAN_DATA_LAYERS.map((layerConfig) => {
+              const enabled = oceanLayerVisibility[layerConfig.id];
+              const status = oceanLayerStatus[layerConfig.id];
+              const statusText =
+                status === "failed" ? "failed to load" : enabled ? "active" : status;
+
+              return (
+                <p key={`${layerConfig.id}-status`}>
+                  {layerConfig.title}: {statusText}
+                </p>
               );
             })}
           </div>
