@@ -506,11 +506,22 @@ export default function OceanGuardDashboard() {
     Papa.parse(file, {
       header: true,
       dynamicTyping: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim(),
       complete: async (results) => {
-        // Updated to use 'location-lat' and 'location-long' as seen in the user's CSV format
-        const data = results.data.filter(row => row["location-lat"] && row["location-long"]);
+        // Strict check to ensure we don't skip 0 coordinates and handle missing data correctly
+        const data = results.data.filter(row => {
+          const lat = row["location-lat"];
+          const lon = row["location-long"];
+          return lat !== null && lat !== undefined && lat !== "" && 
+                 lon !== null && lon !== undefined && lon !== "";
+        });
+
+        console.log(`CSV Upload: Parsed ${results.data.length} rows, found ${data.length} valid coordinate pairs.`);
+
         if (data.length === 0) {
-          alert("Invalid CSV format. Please ensure it has 'location-lat' and 'location-long' columns.");
+          alert("No valid data found. Ensure your CSV has 'location-lat' and 'location-long' headers and coordinate values.");
+          console.error("CSV Headers found:", results.meta.fields);
           return;
         }
 
